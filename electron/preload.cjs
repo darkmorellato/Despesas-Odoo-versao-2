@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   print: (options) => ipcRenderer.invoke('print-window', options),
   printToPDF: (options) => ipcRenderer.invoke('print-to-pdf', options),
   savePDF: (defaultName) => ipcRenderer.invoke('save-pdf', defaultName),
+  downloadPDFDirect: (defaultName) => ipcRenderer.invoke('download-pdf-direct', defaultName),
   getAppVersion: () => ipcRenderer.invoke('get-app-version'),
   platform: process.platform,
 });

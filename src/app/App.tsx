@@ -394,14 +394,14 @@ export default function App() {
   }, []);
 
   const handleSavePDF = useCallback(async () => {
-    if (window.electronAPI?.savePDF) {
-      const defaultFileName = `relatorio-despesas-${selectedDate || selectedMonth || getTodayLocal()}.pdf`;
-      showToast("Selecione o local para salvar o PDF...", "info");
-      const res = await window.electronAPI.savePDF(defaultFileName);
+    const defaultFileName = `relatorio-despesas-${selectedDate || selectedMonth || getTodayLocal()}.pdf`;
+    if (window.electronAPI?.downloadPDFDirect) {
+      showToast("Baixando PDF direto...", "info");
+      const res = await window.electronAPI.downloadPDFDirect(defaultFileName);
       if (res.success) {
-        showToast("PDF salvo com sucesso!", "success");
-      } else if (!res.canceled) {
-        showToast("Erro ao salvar PDF: " + (res.error || "Desconhecido"), "error");
+        showToast(`PDF baixado com sucesso em Downloads: ${res.fileName || defaultFileName}`, "success");
+      } else {
+        showToast("Erro ao baixar PDF: " + (res.error || "Desconhecido"), "error");
       }
     } else {
       window.print();

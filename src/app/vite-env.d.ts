@@ -11,6 +11,7 @@ declare global {
       print: (options?: any) => Promise<{ success: boolean; error?: string }>;
       printToPDF: (options?: any) => Promise<{ success: boolean; filePath?: string; error?: string }>;
       savePDF: (defaultName?: string) => Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }>;
+      downloadPDFDirect: (defaultName?: string) => Promise<{ success: boolean; filePath?: string; fileName?: string; error?: string }>;
       getAppVersion: () => Promise<string>;
       platform: string;
     };

@@ -80,6 +80,43 @@ ipcMain.handle('print-to-pdf', async (event, options = {}) => {
   }
 });
 
+// IPC handler for direct vector PDF download to user Downloads directory
+ipcMain.handle('download-pdf-direct', async (event, defaultName = 'relatorio-despesas.pdf') => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return { success: false, error: 'Window not found' };
+
+  try {
+    const pdfData = await win.webContents.printToPDF({
+      printBackground: true,
+      pageSize: 'A4',
+      preferCSSPageSize: true,
+      margins: {
+        top: 0.4,
+        bottom: 0.4,
+        left: 0.4,
+        right: 0.4
+      }
+    });
+
+    const downloadsDir = app.getPath('downloads');
+    let targetFileName = defaultName.endsWith('.pdf') ? defaultName : `${defaultName}.pdf`;
+    let filePath = path.join(downloadsDir, targetFileName);
+
+    if (fs.existsSync(filePath)) {
+      const ext = path.extname(targetFileName);
+      const base = path.basename(targetFileName, ext);
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(11, 19);
+      filePath = path.join(downloadsDir, `${base}-${ts}${ext}`);
+    }
+
+    await fs.promises.writeFile(filePath, pdfData);
+    return { success: true, filePath, fileName: path.basename(filePath) };
+  } catch (err) {
+    console.error('Erro ao baixar PDF direto:', err);
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
 // IPC handler for saving vector PDF to chosen file path
 ipcMain.handle('save-pdf', async (event, defaultName = 'relatorio-despesas.pdf') => {
   const win = BrowserWindow.fromWebContents(event.sender);
