@@ -50,7 +50,7 @@ export const playSynthesizedBeep = (): void => {
  * Play notification sound (tries audio file, falls back to beep)
  */
 export const playNotificationSound = (): void => {
-  const audio = new Audio('/audio/hey_listen.mp3');
+  const audio = new Audio('./audio/hey_listen.mp3');
   const playPromise = audio.play();
   if (playPromise !== undefined) {
     playPromise.catch(() => {

@@ -34,11 +34,11 @@ export const STORE_DISPLAY_ORDER: Record<string, number> = {
 };
 
 export const STORE_IMAGES: Record<string, string> = {
-  "Dom Pedro II": "/images/dompedro.png",
-  "Realme": "/images/realme.png",
-  "Xv de Novembro": "/images/xv.png",
-  "Premium": "/images/premium.png",
-  "Kassouf": "/images/kassouf.png",
+  "Dom Pedro II": "./images/dompedro.png",
+  "Realme": "./images/realme.png",
+  "Xv de Novembro": "./images/xv.png",
+  "Premium": "./images/premium.png",
+  "Kassouf": "./images/kassouf.png",
   "default": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='1.5'%3E%3Cpath d='M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3Cpolyline points='9 22 9 12 15 12 15 22'/%3E%3C/svg%3E"
 };
 

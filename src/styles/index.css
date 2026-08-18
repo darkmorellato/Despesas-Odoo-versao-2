@@ -133,19 +133,51 @@ input::-webkit-calendar-picker-indicator {
 }
 
 @media print {
+  @page {
+    margin: 10mm 10mm;
+    size: A4 portrait;
+  }
+
+  *, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   .no-print {
     display: none !important;
   }
 
-  body {
-    background: white !important;
+  html, body, #root, [class*="bg-[#F5F2EA]"], [class*="bg-[#EBE7D9]"] {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  /* Modal container reset for print */
+  .fixed.inset-0 {
+    position: static !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  #printable-report {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
   }
 
   .glass-panel, .liquid-btn-primary, .liquid-input, .liquid-btn-3d {
-    background: white !important;
+    background: #ffffff !important;
     box-shadow: none !important;
-    border: 1px solid #ddd !important;
-    color: black !important;
+    border: 1px solid #e2e8f0 !important;
+    color: #0f172a !important;
   }
 
   .truncate, .max-w-xs {
@@ -157,15 +189,22 @@ input::-webkit-calendar-picker-indicator {
   table {
     width: 100% !important;
     table-layout: auto !important;
+    border-collapse: collapse !important;
   }
 
   tr {
-    break-inside: avoid;
-    page-break-inside: avoid;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .print-break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-bottom: 1.5rem !important;
   }
 
   td, th {
-    padding: 4px 2px !important;
+    padding: 6px 4px !important;
     vertical-align: top !important;
   }
 
@@ -176,5 +215,6 @@ input::-webkit-calendar-picker-indicator {
 
   thead {
     position: static !important;
+    display: table-header-group !important;
   }
 }

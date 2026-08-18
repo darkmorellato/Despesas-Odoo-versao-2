@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, lazy } from 'react';
 import { useAuth, useToast, useBackup } from '@/shared/hooks';
 import { useExpenses, splitExpense, validateAdminPassword } from '@/features/expenses';
-import { useCalendar } from '@/features/calendar';
-import { useFixedPayments } from '@/features/fixed-payments';
+import { useCalendar } from '@/features/calendar/hooks/useCalendar';
+import { useFixedPayments } from '@/features/fixed-payments/hooks/useFixedPayments';
 import { STORES_LIST, CATEGORIES_LIST, STORE_IMAGES, STORE_DISPLAY_ORDER } from '@/config/constants';
 import { getTodayLocal, formatDateBR, formatMonthBR, formatCurrency } from '@/shared/utils/formatters';
 import { getStoreColorClass, getStoreBarColor, getStoreOrder } from '@/shared/utils/helpers';
 import { playNotificationSound } from '@/shared/utils/audio';
-import { ToastContainer, DateInput, PendingPaymentsAlert } from '@/shared/components/ui';
+import { ToastContainer, DateInput, PendingPaymentsAlert, PrintPreviewModal } from '@/shared/components/ui';
 import { LoadingSpinner } from '@/shared/components/ui/LoadingSpinner';
 
-const ExpenseCalendar = lazy(() => import('@/features/calendar').then(m => ({ default: m.ExpenseCalendar })));
-const ExpenseAnalytics = lazy(() => import('@/features/analytics').then(m => ({ default: m.ExpenseAnalytics })));
-const FixedPaymentsManager = lazy(() => import('@/features/fixed-payments').then(m => ({ default: m.FixedPaymentsManager })));
+const ExpenseCalendar = lazy(() => import('@/features/calendar/components/ExpenseCalendar').then(m => ({ default: m.ExpenseCalendar })));
+const ExpenseAnalytics = lazy(() => import('@/features/analytics/components/ExpenseAnalytics').then(m => ({ default: m.ExpenseAnalytics })));
+const FixedPaymentsManager = lazy(() => import('@/features/fixed-payments/components/FixedPaymentsManager').then(m => ({ default: m.FixedPaymentsManager })));
 import {
   Plus,
   Edit,
@@ -71,6 +71,7 @@ export default function App() {
   const [pendingItems, setPendingItems] = useState<any[]>([]);
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
   const [passwordInput, setPasswordInput] = useState('');
+  const [showPrintPreview, setShowPrintPreview] = useState(false);
   
   // Form state
   const [date, setDate] = useState(getTodayLocal());
@@ -388,6 +389,28 @@ export default function App() {
     showToast(`CSV gerado com ${filteredExpenses.length} registro(s)!`);
   };
 
+  const handlePrint = useCallback(() => {
+    setShowPrintPreview(true);
+  }, []);
+
+  const handleOpenVectorPDF = useCallback(async () => {
+    if (window.electronAPI?.printToPDF) {
+      showToast("Gerando PDF vetorial...", "info");
+      const res = await window.electronAPI.printToPDF();
+      if (res.success) {
+        showToast("PDF vetorial aberto!", "success");
+      } else {
+        showToast("Erro ao gerar PDF: " + (res.error || "Desconhecido"), "error");
+      }
+    } else {
+      window.print();
+    }
+  }, [showToast]);
+
+  const handlePrintDirect = useCallback(() => {
+    window.print();
+  }, []);
+
   const handleEmptyStateRestore = () => {
     if (fileInputRef.current) fileInputRef.current.click();
 };
@@ -681,7 +704,7 @@ const renderAnalyticsView = () => {
                     </div>
                   </div>
                   <div className="flex gap-4 w-full md:w-auto no-print">
-                    <button onClick={() => window.print()} className="flex-1 md:flex-none justify-center flex items-center gap-2 px-5 py-3 bg-white/60 hover:bg-white border border-white/80 rounded-xl text-slate-600 font-bold transition-all shadow-sm">
+                    <button onClick={handlePrint} className="flex-1 md:flex-none justify-center flex items-center gap-2 px-5 py-3 bg-white/60 hover:bg-white border border-white/80 rounded-xl text-slate-600 font-bold transition-all shadow-sm">
                       <Printer className="w-4 h-4" /> Imprimir
                     </button>
                     <button onClick={handleExportCSV} className="flex-1 md:flex-none justify-center flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-200/50 font-bold transition-transform hover:-translate-y-0.5">
@@ -1010,6 +1033,21 @@ const renderAnalyticsView = () => {
           </div>
         </div>
       )}
+
+      {/* Print Preview Modal */}
+      <PrintPreviewModal
+        isOpen={showPrintPreview}
+        onClose={() => setShowPrintPreview(false)}
+        expenses={filteredExpenses}
+        totalsByStore={totalsByStore}
+        totalGeneral={totalGeneral}
+        settings={settings}
+        filterMode={filterMode}
+        selectedDate={selectedDate}
+        selectedMonth={selectedMonth}
+        searchTerm={searchTerm}
+        onPrintDirect={handlePrintDirect}
+      />
     </div>
   );
 }
