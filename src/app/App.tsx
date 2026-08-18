@@ -7,6 +7,7 @@ import { STORES_LIST, CATEGORIES_LIST, STORE_IMAGES, STORE_DISPLAY_ORDER } from 
 import { getTodayLocal, formatDateBR, formatMonthBR, formatCurrency } from '@/shared/utils/formatters';
 import { getStoreColorClass, getStoreBarColor, getStoreOrder } from '@/shared/utils/helpers';
 import { playNotificationSound } from '@/shared/utils/audio';
+import { exportVectorPDF, openVectorPDFInNewTab } from '@/shared/utils/pdfExport';
 import { ToastContainer, DateInput, PendingPaymentsAlert, PrintPreviewModal } from '@/shared/components/ui';
 import { LoadingSpinner } from '@/shared/components/ui/LoadingSpinner';
 
@@ -395,6 +396,12 @@ export default function App() {
 
   const handleSavePDF = useCallback(async () => {
     const defaultFileName = `relatorio-despesas-${selectedDate || selectedMonth || getTodayLocal()}.pdf`;
+    const periodLabel = searchTerm
+      ? `Busca: "${searchTerm}"`
+      : filterMode === 'month'
+      ? `Mês: ${formatMonthBR(selectedMonth)}`
+      : `Dia: ${formatDateBR(selectedDate)}`;
+
     if (window.electronAPI?.downloadPDFDirect) {
       showToast("Baixando PDF direto...", "info");
       const res = await window.electronAPI.downloadPDFDirect(defaultFileName);
@@ -404,9 +411,33 @@ export default function App() {
         showToast("Erro ao baixar PDF: " + (res.error || "Desconhecido"), "error");
       }
     } else {
-      window.print();
+      // In web browsers (including Gecko / Zen Browser), generates 100% vector PDF with selectable text
+      exportVectorPDF(filteredExpenses, settings, periodLabel, defaultFileName);
+      showToast("PDF vetorial baixado com sucesso!", "success");
     }
-  }, [selectedDate, selectedMonth, showToast]);
+  }, [selectedDate, selectedMonth, searchTerm, filterMode, filteredExpenses, settings, showToast]);
+
+  const handleOpenNewTabPDF = useCallback(async () => {
+    const periodLabel = searchTerm
+      ? `Busca: "${searchTerm}"`
+      : filterMode === 'month'
+      ? `Mês: ${formatMonthBR(selectedMonth)}`
+      : `Dia: ${formatDateBR(selectedDate)}`;
+
+    if (window.electronAPI?.printToPDF) {
+      showToast("Abrindo PDF vetorial...", "info");
+      const res = await window.electronAPI.printToPDF();
+      if (res.success) {
+        showToast("PDF aberto no visualizador!", "success");
+      } else {
+        showToast("Erro ao abrir PDF: " + (res.error || "Desconhecido"), "error");
+      }
+    } else {
+      // In web browsers (including Gecko / Zen Browser), opens 100% vector PDF in new tab with copyable text
+      openVectorPDFInNewTab(filteredExpenses, settings, periodLabel);
+      showToast("PDF vetorial aberto em nova guia!", "success");
+    }
+  }, [selectedDate, selectedMonth, searchTerm, filterMode, filteredExpenses, settings, showToast]);
 
   const handlePrintDirect = useCallback(() => {
     window.print();
@@ -1049,6 +1080,7 @@ const renderAnalyticsView = () => {
         searchTerm={searchTerm}
         onPrintDirect={handlePrintDirect}
         onSavePDF={handleSavePDF}
+        onOpenNewTab={handleOpenNewTabPDF}
       />
     </div>
   );

@@ -18,6 +18,7 @@ interface PrintPreviewModalProps {
   searchTerm: string;
   onPrintDirect: () => void;
   onSavePDF: () => void;
+  onOpenNewTab: () => void;
 }
 
 export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
@@ -33,6 +34,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   searchTerm,
   onPrintDirect,
   onSavePDF,
+  onOpenNewTab,
 }) => {
   if (!isOpen) return null;
 
@@ -92,10 +94,18 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            onClick={onOpenNewTab}
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+            title="Abrir PDF em nova guia com texto 100% copiável"
+          >
+            <FileText className="w-4 h-4" /> Nova Guia
+          </button>
+
           <button
             onClick={onSavePDF}
-            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
             title="Salvar como arquivo PDF original"
           >
             <Download className="w-4 h-4" /> Salvar PDF
@@ -103,7 +113,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
 
           <button
             onClick={onPrintDirect}
-            className="flex items-center gap-2 px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
             title="Imprimir relatório"
           >
             <Printer className="w-4 h-4" /> Imprimir
@@ -111,7 +121,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
 
           <button
             onClick={onClose}
-            className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
             title="Fechar pré-visualização"
           >
             <X className="w-4 h-4" /> Fechar
