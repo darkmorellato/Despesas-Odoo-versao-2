@@ -10,6 +10,7 @@ declare global {
       isElectron: boolean;
       print: (options?: any) => Promise<{ success: boolean; error?: string }>;
       printToPDF: (options?: any) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+      savePDF: (defaultName?: string) => Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }>;
       getAppVersion: () => Promise<string>;
       platform: string;
     };

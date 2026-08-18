@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, Menu, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -76,6 +76,42 @@ ipcMain.handle('print-to-pdf', async (event, options = {}) => {
     return { success: true, filePath };
   } catch (err) {
     console.error('Erro ao gerar PDF vetorial:', err);
+    return { success: false, error: err.message || String(err) };
+  }
+});
+
+// IPC handler for saving vector PDF to chosen file path
+ipcMain.handle('save-pdf', async (event, defaultName = 'relatorio-despesas.pdf') => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return { success: false, error: 'Window not found' };
+
+  try {
+    const pdfData = await win.webContents.printToPDF({
+      printBackground: true,
+      pageSize: 'A4',
+      preferCSSPageSize: true,
+      margins: {
+        top: 0.4,
+        bottom: 0.4,
+        left: 0.4,
+        right: 0.4
+      }
+    });
+
+    const { canceled, filePath } = await dialog.showSaveDialog(win, {
+      title: 'Salvar Relatório em PDF',
+      defaultPath: path.join(app.getPath('downloads'), defaultName),
+      filters: [{ name: 'Documento PDF (*.pdf)', extensions: ['pdf'] }]
+    });
+
+    if (canceled || !filePath) {
+      return { success: false, canceled: true };
+    }
+
+    await fs.promises.writeFile(filePath, pdfData);
+    return { success: true, filePath };
+  } catch (err) {
+    console.error('Erro ao salvar PDF:', err);
     return { success: false, error: err.message || String(err) };
   }
 });

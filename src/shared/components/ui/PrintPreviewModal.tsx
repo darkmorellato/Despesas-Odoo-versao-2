@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Printer, X, Store, FileText } from '@/shared/components/icons';
+import { Printer, X, Store, FileText, Download } from '@/shared/components/icons';
 import { formatDateBR, formatMonthBR, formatCurrency, getTodayLocal } from '@/shared/utils/formatters';
 import { getStoreOrder } from '@/shared/utils/helpers';
 import { STORE_IMAGES } from '@/config/constants';
@@ -17,6 +17,7 @@ interface PrintPreviewModalProps {
   selectedMonth: string;
   searchTerm: string;
   onPrintDirect: () => void;
+  onSavePDF: () => void;
 }
 
 export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
@@ -31,6 +32,7 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   selectedMonth,
   searchTerm,
   onPrintDirect,
+  onSavePDF,
 }) => {
   if (!isOpen) return null;
 
@@ -91,6 +93,14 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={onSavePDF}
+            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+            title="Salvar como arquivo PDF original"
+          >
+            <Download className="w-4 h-4" /> Salvar PDF
+          </button>
+
           <button
             onClick={onPrintDirect}
             className="flex items-center gap-2 px-5 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"

@@ -393,19 +393,20 @@ export default function App() {
     setShowPrintPreview(true);
   }, []);
 
-  const handleOpenVectorPDF = useCallback(async () => {
-    if (window.electronAPI?.printToPDF) {
-      showToast("Gerando PDF vetorial...", "info");
-      const res = await window.electronAPI.printToPDF();
+  const handleSavePDF = useCallback(async () => {
+    if (window.electronAPI?.savePDF) {
+      const defaultFileName = `relatorio-despesas-${selectedDate || selectedMonth || getTodayLocal()}.pdf`;
+      showToast("Selecione o local para salvar o PDF...", "info");
+      const res = await window.electronAPI.savePDF(defaultFileName);
       if (res.success) {
-        showToast("PDF vetorial aberto!", "success");
-      } else {
-        showToast("Erro ao gerar PDF: " + (res.error || "Desconhecido"), "error");
+        showToast("PDF salvo com sucesso!", "success");
+      } else if (!res.canceled) {
+        showToast("Erro ao salvar PDF: " + (res.error || "Desconhecido"), "error");
       }
     } else {
       window.print();
     }
-  }, [showToast]);
+  }, [selectedDate, selectedMonth, showToast]);
 
   const handlePrintDirect = useCallback(() => {
     window.print();
@@ -1047,6 +1048,7 @@ const renderAnalyticsView = () => {
         selectedMonth={selectedMonth}
         searchTerm={searchTerm}
         onPrintDirect={handlePrintDirect}
+        onSavePDF={handleSavePDF}
       />
     </div>
   );
