@@ -2,130 +2,143 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  background: #F5F2EA;
-  color: #1A1A1A;
-  -webkit-font-smoothing: antialiased;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+@layer base {
+  body {
+    @apply antialiased text-slate-800 bg-[#F5F2EA];
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
 }
 
-input[type=number] {
-  appearance: textfield;
+/* Custom glassmorphism and subtle animations */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
 }
 
-input::-webkit-calendar-picker-indicator {
-  cursor: pointer;
-  opacity: 0.6;
+.glass-panel-dark {
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
+/* Custom scrollbar for clean look */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(0,0,0,0.02);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.5);
-  border-radius: 10px;
-  border: 2px solid transparent;
-  background-clip: content-box;
+  background: rgba(100, 116, 139, 0.2);
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.8);
+  background: rgba(100, 116, 139, 0.4);
 }
 
-.glass-panel {
-  background: #FFFFFF;
-  border: 1px solid rgba(0,0,0,0.05);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+/* Custom focus ring */
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2;
 }
 
-.liquid-btn-primary {
-  background: #FDB827;
-  color: #1A1A1A;
-  font-weight: 700;
-  transition: all 0.2s ease;
+/* Calendar grid custom styles */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
-.liquid-btn-primary:hover {
-  background: #E5A71F;
+/* Liquid UI Custom Classes */
+.liquid-card {
+  background: #ffffff;
+  border-radius: 32px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.03);
 }
 
-.liquid-btn-3d {
-  background: #1A1A1A;
-  color: white;
-  font-weight: 700;
-  transition: all 0.2s ease;
-}
-
-.liquid-btn-3d:hover {
-  background: #333;
-}
-
-.push-btn {
-  position: relative;
-  transition: transform 0.1s ease;
-}
-
-.push-btn:not(:disabled):active {
-  transform: translateY(2px) scale(0.98) !important;
+.liquid-card-sm {
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.03);
 }
 
 .liquid-input {
-  background: #FFFFFF;
-  border: 1px solid rgba(0,0,0,0.08);
-  transition: all 0.2s ease;
+  background: #F5F2EA;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 18px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .liquid-input:focus {
-  border-color: #FDB827;
-  box-shadow: 0 0 0 2px rgba(253, 184, 39, 0.15);
+  background: #ffffff;
+  border-color: #000000;
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.05);
   outline: none;
 }
 
-.fade-in {
-  animation: fadeIn 0.3s ease-out;
+.liquid-btn-primary {
+  background: #000000;
+  color: #ffffff;
+  border-radius: 20px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.liquid-btn-primary:hover {
+  background: #1A1A1A;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
 }
 
-@keyframes slideInUp {
-  from {
-    transform: translateY(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
+.liquid-btn-primary:active {
+  transform: translateY(0);
 }
 
-@keyframes slideInRight {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+.liquid-btn-secondary {
+  background: #EBE7D9;
+  color: #1A1A1A;
+  border-radius: 20px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.alert-slide-up {
-  animation: slideInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+.liquid-btn-secondary:hover {
+  background: #DFDAC9;
+}
+
+.liquid-btn-accent {
+  background: #FDB827;
+  color: #1A1A1A;
+  border-radius: 20px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.liquid-btn-accent:hover {
+  background: #e5a620;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 25px -5px rgba(253, 184, 39, 0.3);
+}
+
+.liquid-btn-3d {
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: 0 6px 0 #EBE7D9, 0 12px 20px rgba(0,0,0,0.04);
+  transition: all 0.15s ease;
+}
+
+.liquid-btn-3d:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 0 #EBE7D9, 0 16px 24px rgba(0,0,0,0.06);
+}
+
+.liquid-btn-3d:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #EBE7D9, 0 6px 10px rgba(0,0,0,0.04);
 }
 
 .rounded-liquid {
@@ -141,55 +154,61 @@ input::-webkit-calendar-picker-indicator {
   *, *::before, *::after {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+    box-sizing: border-box !important;
   }
 
-  .no-print {
+  .no-print, .no-print * {
     display: none !important;
   }
 
-  html, body, #root, [class*="bg-[#F5F2EA]"], [class*="bg-[#EBE7D9]"] {
+  html, body, #root {
     background: #ffffff !important;
     background-color: #ffffff !important;
     color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
   }
 
   /* Modal container reset for print */
   .fixed.inset-0 {
     position: static !important;
+    inset: auto !important;
     background: transparent !important;
     backdrop-filter: none !important;
     padding: 0 !important;
     margin: 0 !important;
     overflow: visible !important;
     display: block !important;
+    width: 100% !important;
+    height: auto !important;
   }
 
   #printable-report {
+    display: block !important;
     box-shadow: none !important;
     border: none !important;
+    border-radius: 0 !important;
     padding: 0 !important;
     margin: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
-  }
-
-  .glass-panel, .liquid-btn-primary, .liquid-input, .liquid-btn-3d {
     background: #ffffff !important;
-    box-shadow: none !important;
-    border: 1px solid #e2e8f0 !important;
-    color: #0f172a !important;
   }
 
-  .truncate, .max-w-xs {
-    white-space: normal !important;
-    overflow: visible !important;
-    width: auto !important;
+  .print-break-inside-avoid, section {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    margin-bottom: 1.5rem !important;
   }
 
   table {
     width: 100% !important;
-    table-layout: auto !important;
     border-collapse: collapse !important;
+    table-layout: auto !important;
   }
 
   tr {
@@ -197,24 +216,12 @@ input::-webkit-calendar-picker-indicator {
     page-break-inside: avoid !important;
   }
 
-  .print-break-inside-avoid {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-    margin-bottom: 1.5rem !important;
+  thead {
+    display: table-header-group !important;
   }
 
   td, th {
-    padding: 6px 4px !important;
-    vertical-align: top !important;
-  }
-
-  .print-scroll-fix {
-    max-height: none !important;
-    overflow: visible !important;
-  }
-
-  thead {
-    position: static !important;
-    display: table-header-group !important;
+    padding: 6px 8px !important;
+    vertical-align: middle !important;
   }
 }

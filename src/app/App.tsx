@@ -507,8 +507,10 @@ const renderAnalyticsView = () => {
         />
       )}
 
-      {/* Header */}
-      <div className="sticky top-0 z-50 no-print px-4 py-4">
+      {/* Main App Content (Hidden during Print) */}
+      <div className="no-print">
+        {/* Header */}
+        <div className="sticky top-0 z-50 px-4 py-4">
         <div className="max-w-5xl mx-auto">
           <div className="bg-white p-4 px-6 flex justify-between items-center rounded-[32px] border border-gray-100">
             <div className="flex items-center gap-4">
@@ -982,6 +984,7 @@ const renderAnalyticsView = () => {
           </div>
         </div>
       )}
+      </div>
 
       {/* Settings Modal */}
       {isSettingsOpen && (
