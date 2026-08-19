@@ -47,4 +47,4 @@ export interface StoreSplit {
 
 export type GroupByMode = 'date' | 'store';
 export type FilterMode = 'day' | 'month';
-export type ViewMode = 'dashboard' | 'calendar' | 'analytics' | 'payments';
+export type ViewMode = 'dashboard' | 'calendar' | 'analytics' | 'payments' | 'audit';

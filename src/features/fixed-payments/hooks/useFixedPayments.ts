@@ -3,7 +3,7 @@ import { getFirebaseRefs } from '@/config/firebase';
 import { FIXED_NOTIFICATIONS_DEFAULT } from '@/config/constants';
 import type { FixedNotification } from '@/shared/types';
 import type { User } from 'firebase/auth';
-import { onSnapshot, addDoc, setDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
+import { onSnapshot, setDoc, deleteDoc, doc, serverTimestamp } from 'firebase/firestore';
 
 // Helper para formatar mensagem de erro amigável
 const getErrorMessage = (e: unknown, acao: string): string => {
@@ -20,11 +20,26 @@ const getErrorMessage = (e: unknown, acao: string): string => {
 
 const STORAGE_KEY = 'fixed_payments_v1';
 
+function deduplicatePayments(rawPayments: FixedNotification[]): FixedNotification[] {
+  const seen = new Set<string>();
+  const deduplicated: FixedNotification[] = [];
+
+  for (const item of rawPayments) {
+    const key = `${item.day}|${item.description.trim().toLowerCase()}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      deduplicated.push(item);
+    }
+  }
+  return deduplicated;
+}
+
 function loadFromLocalStorage(): FixedNotification[] {
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored) {
-      return JSON.parse(stored);
+      const parsed = JSON.parse(stored);
+      return deduplicatePayments(parsed);
     }
   } catch {
   }
@@ -32,7 +47,8 @@ function loadFromLocalStorage(): FixedNotification[] {
 }
 
 function saveToLocalStorage(payments: FixedNotification[]): void {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(payments));
+  const clean = deduplicatePayments(payments);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
 }
 
 export interface UseFixedPaymentsReturn {
@@ -71,33 +87,37 @@ export const useFixedPayments = (user: User | null): UseFixedPaymentsReturn => {
     const unsubscribe = onSnapshot(
       firebaseRefs.fixedPaymentsRef,
       (snapshot: any) => {
-        const loadedPayments = snapshot.docs.map((doc: any) => ({
-          ...(doc.data() || {}),
-          id: doc.id
+        const loadedPayments = snapshot.docs.map((docSnap: any) => ({
+          ...(docSnap.data() || {}),
+          id: docSnap.id
         })) as FixedNotification[];
 
         console.log(`🟢 Pagamentos: Recebidos ${loadedPayments.length} documentos do Firestore`);
 
         if (loadedPayments.length === 0 && !isPopulating.current) {
-          // Popula os defaults UMA ÚNICA VEZ para evitar loop infinito:
-          // cada addDoc dispara onSnapshot → sem a flag, criaria escritas infinitas
-          console.log('📝 Pagamentos: Firestore vazio - Populando com defaults...');
+          console.log('📝 Pagamentos: Firestore vazio - Populando com defaults sem duplicatas...');
           isPopulating.current = true;
           Promise.all(
-            FIXED_NOTIFICATIONS_DEFAULT.map(({ id: _id, ...payment }) =>
-              addDoc(firebaseRefs.fixedPaymentsRef, payment)
-            )
+            FIXED_NOTIFICATIONS_DEFAULT.map((payment) => {
+              const docRef = doc(firebaseRefs.fixedPaymentsRef, payment.id);
+              return setDoc(docRef, {
+                day: payment.day,
+                description: payment.description,
+                ...(payment.months ? { months: payment.months } : {})
+              });
+            })
           ).catch((err) => {
             console.error('❌ Erro ao popular defaults:', err);
             isPopulating.current = false;
           });
         } else if (loadedPayments.length > 0) {
           isPopulating.current = false;
-          setPayments(loadedPayments);
-          saveToLocalStorage(loadedPayments);
+          const cleanPayments = deduplicatePayments(loadedPayments);
+          setPayments(cleanPayments);
+          saveToLocalStorage(cleanPayments);
           setSyncStatus('synced');
           setIsLoading(false);
-          console.log('✅ Pagamentos: Sincronização completa!', loadedPayments);
+          console.log(`✅ Pagamentos: Sincronização completa sem duplicatas! (${cleanPayments.length} itens)`, cleanPayments);
         }
       },
       (err: any) => {
@@ -111,22 +131,21 @@ export const useFixedPayments = (user: User | null): UseFixedPaymentsReturn => {
       console.log('🔌 Pagamentos: Desconectando listener...');
       unsubscribe();
     };
-    // Apenas `user` e `firebaseRefs.fixedPaymentsRef` como deps — incluir o objeto
-    // `firebaseRefs` inteiro causava reconexão do listener a cada render (Bug 2)
   }, [user, firebaseRefs.fixedPaymentsRef]);
 
   const addPayment = useCallback(async (payment: Omit<FixedNotification, 'id'>) => {
-    const tempId = `default_${Date.now()}`;
-    const newPayment = { id: tempId, ...payment } as FixedNotification;
+    const docId = `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const newPayment = { id: docId, ...payment } as FixedNotification;
     const previousPayments = payments;
-    const updatedPayments = [...payments, newPayment];
+    const updatedPayments = deduplicatePayments([...payments, newPayment]);
 
     setPayments(updatedPayments);
     saveToLocalStorage(updatedPayments);
 
     try {
       setSyncStatus('syncing');
-      await addDoc(firebaseRefs.fixedPaymentsRef, {
+      const docRef = doc(firebaseRefs.fixedPaymentsRef, docId);
+      await setDoc(docRef, {
         ...payment,
         createdAt: serverTimestamp()
       });
@@ -142,7 +161,9 @@ export const useFixedPayments = (user: User | null): UseFixedPaymentsReturn => {
 
   const updatePayment = useCallback(async (id: string, updates: Partial<FixedNotification>) => {
     const previousPayments = payments;
-    const updatedPayments = payments.map(p => p.id === id ? { ...p, ...updates } : p) as FixedNotification[];
+    const updatedPayments = deduplicatePayments(
+      payments.map(p => p.id === id ? { ...p, ...updates } : p) as FixedNotification[]
+    );
 
     setPayments(updatedPayments);
     saveToLocalStorage(updatedPayments);
@@ -165,9 +186,8 @@ export const useFixedPayments = (user: User | null): UseFixedPaymentsReturn => {
   }, [payments, firebaseRefs.fixedPaymentsRef]);
 
   const deletePayment = useCallback(async (id: string) => {
-    // Remove do estado local e localStorage IMEDIATAMENTE (otimista)
     const previousPayments = payments;
-    const updatedPayments = payments.filter(p => p.id !== id);
+    const updatedPayments = deduplicatePayments(payments.filter(p => p.id !== id));
     setPayments(updatedPayments);
     saveToLocalStorage(updatedPayments);
 
@@ -178,16 +198,12 @@ export const useFixedPayments = (user: User | null): UseFixedPaymentsReturn => {
       setSyncStatus('synced');
     } catch (e: unknown) {
       console.error('❌ Erro ao excluir pagamento:', e);
-      // Reverte estado local em caso de erro 
       setPayments(previousPayments);
       saveToLocalStorage(previousPayments);
       setSyncStatus('error');
       throw new Error(getErrorMessage(e, 'excluir pagamento'));
     }
   }, [payments, firebaseRefs.fixedPaymentsRef]);
-
-
-
 
   const getPaymentsByDay = useCallback((day: number): FixedNotification[] => {
     return payments.filter(p => p.day === day);

@@ -41,8 +41,8 @@ export const DateInput: React.FC<DateInputProps> = ({
         className={className}
       />
       {inputType === 'text' && (
-        <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none text-blue-400 group-hover:text-blue-600 transition-colors">
-          <Calendar className="w-5 h-5 drop-shadow-sm" />
+        <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none text-slate-500 group-hover:text-amber-400 transition-colors">
+          <Calendar className="w-4 h-4" />
         </div>
       )}
     </div>

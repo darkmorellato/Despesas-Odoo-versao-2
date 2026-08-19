@@ -3,6 +3,9 @@ import { useAuth, useToast, useBackup } from '@/shared/hooks';
 import { useExpenses, splitExpense, validateAdminPassword } from '@/features/expenses';
 import { useCalendar } from '@/features/calendar/hooks/useCalendar';
 import { useFixedPayments } from '@/features/fixed-payments/hooks/useFixedPayments';
+import { LoginScreen, getStoredUserSession, logoutUser, seedInitialUsersIfNotExist } from '@/features/auth';
+import type { AuthenticatedUser } from '@/features/auth';
+import { logAuditEvent } from '@/features/audit';
 import { STORES_LIST, CATEGORIES_LIST, STORE_IMAGES, STORE_DISPLAY_ORDER } from '@/config/constants';
 import { getTodayLocal, formatDateBR, formatMonthBR, formatCurrency } from '@/shared/utils/formatters';
 import { getStoreColorClass, getStoreBarColor, getStoreOrder } from '@/shared/utils/helpers';
@@ -14,6 +17,8 @@ import { LoadingSpinner } from '@/shared/components/ui/LoadingSpinner';
 const ExpenseCalendar = lazy(() => import('@/features/calendar/components/ExpenseCalendar').then(m => ({ default: m.ExpenseCalendar })));
 const ExpenseAnalytics = lazy(() => import('@/features/analytics/components/ExpenseAnalytics').then(m => ({ default: m.ExpenseAnalytics })));
 const FixedPaymentsManager = lazy(() => import('@/features/fixed-payments/components/FixedPaymentsManager').then(m => ({ default: m.FixedPaymentsManager })));
+const AuditManager = lazy(() => import('@/features/audit/components/AuditManager').then(m => ({ default: m.AuditManager })));
+
 import {
   Plus,
   Edit,
@@ -42,7 +47,15 @@ import {
   HardDrive,
   Cloud,
   Home,
-  BarChart2
+  BarChart2,
+  TrendingUp,
+  TrendingDown,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  Menu,
+  LogOut,
+  History
 } from '@/shared/components/icons';
 import type { Expense, ExpenseGroup, Settings as SettingsType, ViewMode, FilterMode, GroupByMode } from '@/shared/types';
 import '../styles/index.css';
@@ -53,7 +66,21 @@ const DEFAULT_SETTINGS: SettingsType = {
   categories: CATEGORIES_LIST.map(cat => ({ label: cat, odooRef: cat }))
 };
 
+type SortField = 'store' | 'employeeName' | 'category' | 'date' | 'description' | 'amount';
+type SortOrder = 'asc' | 'desc';
+
 export default function App() {
+  // Database user authentication session
+  const [sessionUser, setSessionUser] = useState<AuthenticatedUser | null>(() => getStoredUserSession());
+
+  // Check if session user is Dark Morellato (Admin)
+  const isDarkAdmin = useMemo(() => {
+    if (!sessionUser) return false;
+    const email = sessionUser.email.toLowerCase().trim();
+    const name = sessionUser.name.toLowerCase().trim();
+    return email === 'darkmorelato@miplace.com' || name.includes('dark');
+  }, [sessionUser]);
+
   // Auth and data hooks
   const { user, syncStatus, error: authError } = useAuth();
   const { expenses, isLoading: expensesLoading, addExpense, updateExpense, deleteExpense, canDelete } = useExpenses(user);
@@ -66,14 +93,26 @@ export default function App() {
   const [settings, setSettings] = useState<SettingsType>(DEFAULT_SETTINGS);
   const [currentView, setCurrentView] = useState<ViewMode>('dashboard');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const originalExpenseForAudit = useRef<Expense | null>(null);
+  
+  // Modals for editing and deleting with password verification
+  const [editPasswordModal, setEditPasswordModal] = useState<{ open: boolean; expense: Expense | null }>({ open: false, expense: null });
+  const [editPasswordInput, setEditPasswordInput] = useState('');
+  
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; step: 'confirm' | 'password'; expense: Expense | null }>({ open: false, step: 'confirm', expense: null });
+  const [deletePasswordInput, setDeletePasswordInput] = useState('');
+
   const [showBackupOptions, setShowBackupOptions] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showReminder, setShowReminder] = useState(false);
   const [pendingItems, setPendingItems] = useState<any[]>([]);
-  const [deleteModal, setDeleteModal] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
-  const [passwordInput, setPasswordInput] = useState('');
   const [showPrintPreview, setShowPrintPreview] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
+  // Table Sorting
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+
   // Form state
   const [date, setDate] = useState(getTodayLocal());
   const [description, setDescription] = useState('');
@@ -92,6 +131,11 @@ export default function App() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Initialize and seed database users if not existing
+  useEffect(() => {
+    seedInitialUsersIfNotExist();
+  }, []);
+
   // Load settings from localStorage
   useEffect(() => {
     const savedSet = localStorage.getItem('odoo_fast_settings');
@@ -99,20 +143,33 @@ export default function App() {
       try {
         const parsed = JSON.parse(savedSet);
         parsed.categories = CATEGORIES_LIST.map(cat => ({ label: cat, odooRef: cat }));
+        if (sessionUser && (!parsed.employeeName || parsed.employeeName === "Seu Nome")) {
+          parsed.employeeName = sessionUser.name;
+        }
         setSettings(parsed);
       } catch (e) {
         console.warn("Erro ao parsear settings:", e);
       }
+    } else if (sessionUser) {
+      setSettings(prev => ({ ...prev, employeeName: sessionUser.name }));
     }
-  }, []);
+  }, [sessionUser]);
 
   // Save settings to localStorage
   useEffect(() => {
     localStorage.setItem('odoo_fast_settings', JSON.stringify(settings));
   }, [settings]);
 
+  // Sync session user name with employee settings
+  useEffect(() => {
+    if (sessionUser && (settings.employeeName === "Seu Nome" || !settings.employeeName)) {
+      setSettings(prev => ({ ...prev, employeeName: sessionUser.name }));
+    }
+  }, [sessionUser, settings.employeeName]);
+
   // Check pending payments
   useEffect(() => {
+    if (!sessionUser) return;
     const checkPending = () => {
       const pending = getPendingPayments(fixedPayments);
       if (pending.length > 0) {
@@ -131,10 +188,11 @@ export default function App() {
       clearTimeout(timer);
       clearInterval(interval);
     };
-  }, [getPendingPayments, fixedPayments]);
+  }, [getPendingPayments, fixedPayments, sessionUser]);
 
   // Flashing title for pending payments
   useEffect(() => {
+    if (!sessionUser) return;
     let titleInterval: any;
     if (showReminder && pendingItems.length > 0) {
       let isAlert = true;
@@ -150,7 +208,7 @@ export default function App() {
       clearInterval(titleInterval);
       document.title = "Relatório de Despesas Miplace";
     };
-  }, [showReminder, pendingItems.length]);
+  }, [showReminder, pendingItems.length, sessionUser]);
 
   // Available dates and months
   const availableDates = useMemo(() => {
@@ -199,7 +257,17 @@ export default function App() {
     return filtered;
   }, [expenses, searchTerm, selectedDate, selectedMonth, filterMode]);
 
-  // Group expenses
+  // Handle column sort toggle
+  const handleSort = useCallback((field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  }, [sortField]);
+
+  // Group and sort expenses
   const groupedExpenses = useMemo(() => {
     const groups: Record<string, Expense[]> = {};
     filteredExpenses.forEach(ex => {
@@ -215,8 +283,22 @@ export default function App() {
 
     return sortedKeys.map(key => {
       const sortedItems = [...groups[key]].sort((a, b) => {
-        const orderDiff = getStoreOrder(a.store) - getStoreOrder(b.store);
-        if (orderDiff !== 0) return orderDiff;
+        let cmp = 0;
+        if (sortField === 'amount') {
+          cmp = a.amount - b.amount;
+        } else if (sortField === 'store') {
+          cmp = (getStoreOrder(a.store) - getStoreOrder(b.store)) || a.store.localeCompare(b.store);
+        } else if (sortField === 'category') {
+          cmp = a.category.localeCompare(b.category);
+        } else if (sortField === 'date') {
+          cmp = a.date.localeCompare(b.date);
+        } else if (sortField === 'description') {
+          cmp = a.description.localeCompare(b.description);
+        } else if (sortField === 'employeeName') {
+          cmp = (a.employeeName || '').localeCompare(b.employeeName || '');
+        }
+
+        if (cmp !== 0) return sortOrder === 'asc' ? cmp : -cmp;
         return a.description.localeCompare(b.description);
       });
 
@@ -226,7 +308,7 @@ export default function App() {
         total: sortedItems.reduce((sum, item) => sum + item.amount, 0)
       };
     });
-  }, [filteredExpenses, groupBy]);
+  }, [filteredExpenses, groupBy, sortField, sortOrder]);
 
   // Totals by store
   const totalsByStore = useMemo(() => {
@@ -242,6 +324,29 @@ export default function App() {
     [filteredExpenses]
   );
 
+  // User initials for sidebar avatar
+  const userInitials = useMemo(() => {
+    const name = sessionUser?.name || settings.employeeName;
+    if (!name || name === "Seu Nome") return "DM";
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }, [sessionUser, settings.employeeName]);
+
+  // Handle Login Success
+  const handleLoginSuccess = useCallback((user: AuthenticatedUser) => {
+    setSessionUser(user);
+    setSettings(prev => ({ ...prev, employeeName: user.name }));
+    showToast(`Bem-vindo, ${user.name}!`, 'success');
+  }, [showToast]);
+
+  // Handle Logout
+  const handleLogout = useCallback(() => {
+    logoutUser();
+    setSessionUser(null);
+    showToast('Sessão encerrada com sucesso.', 'info');
+  }, [showToast]);
+
   // Form handlers
   const resetForm = useCallback(() => {
     setDate(getTodayLocal());
@@ -251,7 +356,25 @@ export default function App() {
     setAmount('');
     setNotes('');
     setEditingId(null);
+    originalExpenseForAudit.current = null;
   }, []);
+
+  // Reset all states and return to Home dashboard
+  const handleResetAllToHome = useCallback(() => {
+    resetForm();
+    setSearchTerm('');
+    setEditPasswordModal({ open: false, expense: null });
+    setDeleteModal({ open: false, step: 'confirm', expense: null });
+    if (availableDates.length > 0) {
+      setSelectedDate(availableDates[availableDates.length - 1]);
+    }
+    if (availableMonths.length > 0) {
+      setSelectedMonth(availableMonths[availableMonths.length - 1]);
+    }
+    setCurrentView('dashboard');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast("Retornado ao início do painel!", "info");
+  }, [resetForm, availableDates, availableMonths, showToast]);
 
   const handleAmountChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value.replace(/\D/g, '');
@@ -282,7 +405,8 @@ export default function App() {
     e.preventDefault();
     if (isSubmitting) return;
 
-    if (settings.employeeName === "Seu Nome" || !settings.employeeName.trim()) {
+    const activeEmployeeName = sessionUser?.name || settings.employeeName;
+    if (activeEmployeeName === "Seu Nome" || !activeEmployeeName.trim()) {
       showToast("Configure seu nome antes de lançar.", "error");
       setIsSettingsOpen(true);
       return;
@@ -297,6 +421,8 @@ export default function App() {
     setIsSubmitting(true);
     try {
       if (editingId) {
+        const prev = originalExpenseForAudit.current;
+
         await updateExpense(editingId, {
           date,
           description,
@@ -304,9 +430,39 @@ export default function App() {
           category,
           amount: totalVal,
           notes,
-          employeeName: settings.employeeName
+          employeeName: activeEmployeeName
         });
-        showToast("Lançamento atualizado!");
+
+        // Grava auditoria de edição
+        if (prev) {
+          logAuditEvent({
+            actionType: 'EDIT',
+            actionDate: new Date().toISOString(),
+            userName: sessionUser?.name || 'Administrador',
+            userEmail: sessionUser?.email || '',
+            expenseId: editingId,
+            previousData: {
+              description: prev.description,
+              store: prev.store,
+              category: prev.category,
+              amount: prev.amount,
+              date: prev.date,
+              notes: prev.notes,
+              employeeName: prev.employeeName
+            },
+            newData: {
+              description,
+              store,
+              category,
+              amount: totalVal,
+              date,
+              notes,
+              employeeName: activeEmployeeName
+            }
+          });
+        }
+
+        showToast("Lançamento atualizado e registrado na auditoria!");
         resetForm();
       } else {
         const entries = splitExpense(store as any, totalVal);
@@ -320,7 +476,7 @@ export default function App() {
             store: ent.s,
             amount: ent.v,
             quantity: 1.0,
-            employeeName: settings.employeeName,
+            employeeName: activeEmployeeName,
             originalTotal: entries.length > 1 ? totalVal : null
           };
           await addExpense(newDoc);
@@ -333,39 +489,90 @@ export default function App() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [isSubmitting, settings.employeeName, amount, date, description, store, category, notes, editingId, updateExpense, addExpense, resetForm, showToast]);
+  }, [isSubmitting, sessionUser, settings.employeeName, amount, date, description, store, category, notes, editingId, updateExpense, addExpense, resetForm, showToast]);
 
-  const startEdit = useCallback((ex: Expense) => {
-    setEditingId(ex.id);
-    setDate(ex.date);
-    setDescription(ex.description);
-    setStore(ex.store);
-    setCategory(ex.category);
-    setAmount(formatCurrency(ex.amount));
-    setNotes(ex.notes || '');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    showToast("Editando...", "info");
-  }, [showToast]);
+  // Handle Edit Click (Opens Edit Password Modal)
+  const handleEditClick = useCallback((ex: Expense) => {
+    setEditPasswordModal({ open: true, expense: ex });
+    setEditPasswordInput('');
+  }, []);
 
-  const handleDeleteConfirm = useCallback(async () => {
-    if (!validateAdminPassword(passwordInput)) {
+  // Confirm Edit Password
+  const confirmEditPassword = useCallback(() => {
+    if (!validateAdminPassword(editPasswordInput)) {
       showToast("Senha incorreta.", "error");
       return;
     }
 
-    if (deleteModal.id) {
-      const { allowed, reason } = canDelete(deleteModal.id);
+    if (editPasswordModal.expense) {
+      const ex = editPasswordModal.expense;
+      originalExpenseForAudit.current = ex;
+      setEditingId(ex.id);
+      setDate(ex.date);
+      setDescription(ex.description);
+      setStore(ex.store);
+      setCategory(ex.category);
+      setAmount(formatCurrency(ex.amount));
+      setNotes(ex.notes || '');
+      setEditPasswordModal({ open: false, expense: null });
+      setEditPasswordInput('');
+      setCurrentView('dashboard');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showToast("Modo de edição liberado!", "info");
+    }
+  }, [editPasswordInput, editPasswordModal.expense, showToast]);
+
+  // Handle Delete Click (Opens Delete Step 1: Confirmation)
+  const handleDeleteClick = useCallback((ex: Expense) => {
+    setDeleteModal({ open: true, step: 'confirm', expense: ex });
+    setDeletePasswordInput('');
+  }, []);
+
+  // Delete Step 1 -> Proceed to Step 2 (Password)
+  const proceedToDeletePassword = useCallback(() => {
+    setDeleteModal(prev => ({ ...prev, step: 'password' }));
+  }, []);
+
+  // Confirm Delete Password & Log Audit
+  const confirmDeletePassword = useCallback(async () => {
+    if (!validateAdminPassword(deletePasswordInput)) {
+      showToast("Senha incorreta.", "error");
+      return;
+    }
+
+    if (deleteModal.expense) {
+      const ex = deleteModal.expense;
+      const { allowed, reason } = canDelete(ex.id);
       if (!allowed) {
         showToast(reason || "Exclusão não permitida", "error");
         return;
       }
 
-      await deleteExpense(deleteModal.id);
-      setDeleteModal({ open: false, id: null });
-      setPasswordInput('');
-      showToast("Excluído com sucesso");
+      await deleteExpense(ex.id);
+
+      // Grava auditoria de exclusão
+      logAuditEvent({
+        actionType: 'DELETE',
+        actionDate: new Date().toISOString(),
+        userName: sessionUser?.name || 'Administrador',
+        userEmail: sessionUser?.email || '',
+        expenseId: ex.id,
+        previousData: {
+          description: ex.description,
+          store: ex.store,
+          category: ex.category,
+          amount: ex.amount,
+          date: ex.date,
+          notes: ex.notes,
+          employeeName: ex.employeeName
+        }
+      });
+
+      setDeleteModal({ open: false, step: 'confirm', expense: null });
+      setDeletePasswordInput('');
+      showToast("Lançamento excluído e registrado na auditoria!", "success");
     }
-  }, [passwordInput, deleteModal.id, canDelete, deleteExpense, showToast]);
+  }, [deletePasswordInput, deleteModal.expense, canDelete, deleteExpense, sessionUser, showToast]);
 
   const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -386,7 +593,7 @@ export default function App() {
   };
 
   const handleExportCSV = () => {
-    exportToCSV(filteredExpenses, settings.employeeName);
+    exportToCSV(filteredExpenses, sessionUser?.name || settings.employeeName);
     showToast(`CSV gerado com ${filteredExpenses.length} registro(s)!`);
   };
 
@@ -402,6 +609,11 @@ export default function App() {
       ? `Mês: ${formatMonthBR(selectedMonth)}`
       : `Dia: ${formatDateBR(selectedDate)}`;
 
+    const currentSettings = {
+      ...settings,
+      employeeName: sessionUser?.name || settings.employeeName
+    };
+
     if (window.electronAPI?.downloadPDFDirect) {
       showToast("Baixando PDF direto...", "info");
       const res = await window.electronAPI.downloadPDFDirect(defaultFileName);
@@ -411,11 +623,10 @@ export default function App() {
         showToast("Erro ao baixar PDF: " + (res.error || "Desconhecido"), "error");
       }
     } else {
-      // In web browsers (including Gecko / Zen Browser), generates 100% vector PDF with selectable text
-      exportVectorPDF(filteredExpenses, settings, periodLabel, defaultFileName);
+      exportVectorPDF(filteredExpenses, currentSettings, periodLabel, defaultFileName);
       showToast("PDF vetorial baixado com sucesso!", "success");
     }
-  }, [selectedDate, selectedMonth, searchTerm, filterMode, filteredExpenses, settings, showToast]);
+  }, [selectedDate, selectedMonth, searchTerm, filterMode, filteredExpenses, settings, sessionUser, showToast]);
 
   const handleOpenNewTabPDF = useCallback(async () => {
     const periodLabel = searchTerm
@@ -423,6 +634,11 @@ export default function App() {
       : filterMode === 'month'
       ? `Mês: ${formatMonthBR(selectedMonth)}`
       : `Dia: ${formatDateBR(selectedDate)}`;
+
+    const currentSettings = {
+      ...settings,
+      employeeName: sessionUser?.name || settings.employeeName
+    };
 
     if (window.electronAPI?.printToPDF) {
       showToast("Abrindo PDF vetorial...", "info");
@@ -433,11 +649,10 @@ export default function App() {
         showToast("Erro ao abrir PDF: " + (res.error || "Desconhecido"), "error");
       }
     } else {
-      // In web browsers (including Gecko / Zen Browser), opens 100% vector PDF in new tab with copyable text
-      openVectorPDFInNewTab(filteredExpenses, settings, periodLabel);
+      openVectorPDFInNewTab(filteredExpenses, currentSettings, periodLabel);
       showToast("PDF vetorial aberto em nova guia!", "success");
     }
-  }, [selectedDate, selectedMonth, searchTerm, filterMode, filteredExpenses, settings, showToast]);
+  }, [selectedDate, selectedMonth, searchTerm, filterMode, filteredExpenses, settings, sessionUser, showToast]);
 
   const handlePrintDirect = useCallback(() => {
     window.print();
@@ -445,58 +660,61 @@ export default function App() {
 
   const handleEmptyStateRestore = () => {
     if (fileInputRef.current) fileInputRef.current.click();
-};
+  };
 
-// Render calendar view
-  const renderCalendarView = () => {
-    return (
-      <Suspense fallback={<LoadingSpinner />}>
-        <ExpenseCalendar
-          fixedPayments={fixedPayments}
-          checkedState={checks}
-          onToggleCheck={toggleCheck}
-          showToast={showToast}
-          syncError={syncError}
-        />
-      </Suspense>
+  // View titles
+  const viewTitles: Record<ViewMode, string> = {
+    dashboard: "Visão Geral",
+    calendar: "Calendário",
+    analytics: "Análise & Métricas",
+    payments: "Pagamentos Fixos",
+    audit: "Registros & Auditoria"
+  };
+
+  // Render sort icon in table headers
+  const renderSortIcon = (field: SortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3 h-3 text-slate-400 opacity-60 group-hover:opacity-100" />;
+    }
+    return sortOrder === 'asc' ? (
+      <ArrowUp className="w-3 h-3 text-amber-600" />
+    ) : (
+      <ArrowDown className="w-3 h-3 text-amber-600" />
     );
   };
 
-const renderAnalyticsView = () => {
-    return (
-      <Suspense fallback={<LoadingSpinner />}>
-        <ExpenseAnalytics
-          expenses={expenses}
-          currency={settings.currency}
-        />
-      </Suspense>
-    );
-  };
+  // Current period label matching reference design
+  const currentPeriodLabel = useMemo(() => {
+    if (searchTerm) return `Busca: "${searchTerm}"`;
+    if (filterMode === 'month' && selectedMonth) return formatMonthBR(selectedMonth);
+    if (filterMode === 'day' && selectedDate) return formatDateBR(selectedDate);
+    return "Consolidado";
+  }, [searchTerm, filterMode, selectedMonth, selectedDate]);
 
-  const renderPaymentsView = () => {
+  // If user is not authenticated, render Login Screen
+  if (!sessionUser) {
     return (
-      <Suspense fallback={<LoadingSpinner />}>
-        <FixedPaymentsManager
-          showToast={showToast}
-        />
-      </Suspense>
+      <>
+        <ToastContainer toasts={toasts} removeToast={removeToast} />
+        <LoginScreen onLoginSuccess={handleLoginSuccess} />
+      </>
     );
-  };
+  }
 
-// Loading state
+  // Loading state
   if (expensesLoading && expenses.length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#F5F2EA]">
+      <div className="min-h-screen flex items-center justify-center bg-[#f4f5f7]">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-gray-200 border-t-[#FDB827] rounded-full animate-spin mx-auto"></div>
-          <p className="mt-4 text-[#1A1A1A] font-medium">Carregando dados...</p>
+          <div className="w-10 h-10 border-2 border-slate-300 border-t-amber-500 rounded-full animate-spin mx-auto"></div>
+          <p className="mt-4 text-slate-600 font-medium text-sm">Carregando dados...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="pb-20 print:pb-0 min-h-screen bg-[#F5F2EA]">
+    <div className="min-h-screen bg-[#f4f5f7] text-slate-900 flex flex-col lg:flex-row font-sans antialiased">
       <ToastContainer toasts={toasts} removeToast={removeToast} />
 
       {showReminder && (
@@ -507,436 +725,878 @@ const renderAnalyticsView = () => {
         />
       )}
 
-      {/* Main App Content (Hidden during Print) */}
-      <div className="no-print">
-        {/* Header */}
-        <div className="sticky top-0 z-50 px-4 py-4">
-        <div className="max-w-5xl mx-auto">
-          <div className="bg-white p-4 px-6 flex justify-between items-center rounded-[32px] border border-gray-100">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 bg-[#FDB827] rounded-xl flex items-center justify-center">
-                <DollarSign className="w-6 h-6 text-[#1A1A1A]" />
-              </div>
-              <div className="flex flex-col justify-center">
-                <div className="flex items-center gap-3">
-                  <h1 className="font-bold text-[#1A1A1A] text-xl leading-tight tracking-tight">Despesas Miplace</h1>
-                  <div className="flex items-center gap-2 ml-4 border-l border-gray-200 pl-4">
-                    <button
-                      onClick={() => setCurrentView('dashboard')}
-                      className={`p-2.5 rounded-xl transition-all ${currentView === 'dashboard' ? 'bg-black text-white' : 'hover:bg-gray-100 text-gray-400'}`}
-                      title="Início"
-                    >
-                      <Home className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={() => setCurrentView('calendar')}
-                      className={`p-2.5 rounded-xl transition-all ${currentView === 'calendar' ? 'bg-black text-white' : 'hover:bg-gray-100 text-gray-400'}`}
-                      title="Calendário"
-                    >
-                      <Calendar className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={() => setCurrentView('analytics')}
-                      className={`p-2.5 rounded-xl transition-all ${currentView === 'analytics' ? 'bg-black text-white' : 'hover:bg-gray-100 text-gray-400'}`}
-                      title="Análise"
-                    >
-                      <BarChart2 className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={() => setCurrentView('payments')}
-                      className={`p-2.5 rounded-xl transition-all ${currentView === 'payments' ? 'bg-black text-white' : 'hover:bg-gray-100 text-gray-400'}`}
-                      title="Pagamentos"
-                    >
-                      <CheckSquare className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 mt-1">
-                  {settings.employeeName !== "Seu Nome" ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] bg-[#EBE7D9] text-[#1A1A1A] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
-                        <Globe className="w-3 h-3" /> {settings.employeeName} | V2
-                      </span>
-                      {syncStatus === 'synced' && <div className="w-2 h-2 rounded-full bg-emerald-500" title="Online"></div>}
-                      {syncStatus === 'syncing' && <div className="w-2 h-2 rounded-full bg-[#FDB827] animate-pulse" title="Sincronizando..."></div>}
-                      {syncStatus === 'error' && <WifiOff className="w-3 h-3 text-red-500" title="Erro de Conexão" />}
-                      {syncStatus === 'offline' && <div className="w-2 h-2 rounded-full bg-gray-400" title="Offline"></div>}
-                    </div>
-                  ) : (
-                    <span className="text-[10px] bg-[#FDB827] text-[#1A1A1A] px-2 py-0.5 rounded-full font-bold">
-                      Configure seu Nome
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <button onClick={() => setShowBackupOptions(true)} className="p-2 rounded-xl hover:bg-gray-100 transition-colors text-gray-400 hover:text-[#1A1A1A]" title="Salvar Backup">
-                <HardDrive className="w-5 h-5" />
-              </button>
-              <button onClick={() => setIsSettingsOpen(true)} className="p-2 rounded-xl hover:bg-gray-100 transition-colors text-gray-400 hover:text-[#1A1A1A]" title="Configurações">
-                <Settings className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Hidden file input */}
+      {/* Hidden file input for backup restoration */}
       <input type="file" ref={fileInputRef} onChange={handleRestore} accept=".json" className="hidden" />
 
-      {/* Main content */}
-      <div className="max-w-5xl mx-auto px-6 space-y-8 mt-4">
-        {currentView === 'calendar' ? (
-          renderCalendarView()
-        ) : currentView === 'analytics' ? (
-          renderAnalyticsView()
-        ) : currentView === 'payments' ? (
-          renderPaymentsView()
-        ) : (
-          <>
-{/* Store cards */}
-          {expenses.length > 0 && (
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 no-print fade-in">
-              {Object.entries(totalsByStore).sort((a, b) => b[1] - a[1]).map(([storeName, val]) => (
-                <div key={storeName} className="bg-white p-5 rounded-[32px] border border-gray-100 hover:scale-[1.02] transition-transform duration-200">
-                  <div className="flex items-center gap-2 mb-3">
-                    <img src={STORE_IMAGES[storeName] || STORE_IMAGES["default"]} alt={storeName} className="w-8 h-8 rounded-xl" />
-                    <span className="text-[10px] uppercase font-bold text-gray-400 truncate block tracking-wider">{storeName}</span>
-                  </div>
-                  <span className="text-xl font-bold text-[#1A1A1A] block">{settings.currency} {formatCurrency(val)}</span>
-                  <div className="h-1.5 w-full rounded-full bg-[#EBE7D9] mt-3"></div>
-                </div>
-              ))}
+      {/* Mobile Top Navigation Bar */}
+      <div className="lg:hidden flex items-center justify-between p-4 bg-[#111215] text-white border-b border-zinc-800 sticky top-0 z-50 no-print">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-amber-400 text-slate-950 font-extrabold flex items-center justify-center text-xs tracking-tighter">
+            MI
+          </div>
+          <div>
+            <h1 className="text-sm font-bold tracking-tight text-white leading-none">Miplace Despesas</h1>
+            <span className="text-[9px] text-slate-400 uppercase tracking-widest">Enterprise Dashboard</span>
+          </div>
+        </div>
+        <button
+          onClick={() => setMobileMenuOpen(prev => !prev)}
+          className="p-2 rounded-lg bg-white/10 text-slate-300 hover:text-white cursor-pointer"
+          aria-label="Abrir Menu"
+        >
+          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </button>
+      </div>
+
+      {/* Dark Sidebar Navigation (Matches Reference Image) */}
+      <aside
+        className={`
+          fixed lg:sticky top-0 left-0 z-50 lg:z-30 w-64 h-screen bg-[#111215] text-slate-300 border-r border-zinc-900
+          flex flex-col justify-between p-5 shrink-0 transition-transform duration-300 no-print shadow-xl
+          ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+        `}
+      >
+        <div>
+          {/* Logo Header (Reference Image Style) */}
+          <div className="flex items-center gap-3 pb-6 border-b border-white/10">
+            <div className="w-10 h-10 rounded-full bg-amber-400 text-slate-950 font-extrabold flex flex-col items-center justify-center leading-none shadow-md shrink-0">
+              <span className="text-[11px] font-black tracking-tight">MI</span>
+              <span className="text-[7px] font-bold tracking-tighter -mt-0.5">PLACE</span>
             </div>
-          )}
-
-          {/* Form */}
-          <div className="bg-white rounded-[40px] overflow-hidden no-print border border-gray-100">
-            <div className="p-8">
-              <div className="flex justify-between items-center mb-8">
-                <h2 className="text-xl font-bold text-[#1A1A1A] tracking-tight flex items-center gap-4">
-                  {editingId ? (
-                    <div className="p-2.5 rounded-xl bg-[#FDB827] text-[#1A1A1A]">
-                      <Edit className="w-5 h-5" />
-                    </div>
-                  ) : (
-                    <div className="p-2.5 rounded-xl bg-[#7C5CFC] text-white">
-                      <Plus className="w-5 h-5" />
-                    </div>
-                  )}
-                  {editingId ? "Editar Lançamento" : "Novo Lançamento"}
-                </h2>
-                <div className="flex items-center gap-2">
-                  {editingId && (
-                    <button onClick={() => { resetForm(); showToast("Cancelado", "info"); }} className="bg-[#EBE7D9] px-4 py-2 rounded-xl text-xs font-bold text-[#1A1A1A] hover:bg-gray-200 transition-colors">
-                      Cancelar
-                    </button>
-                  )}
-                  {!editingId && (
-                    <button onClick={resetForm} className="flex items-center gap-1.5 bg-[#EBE7D9] px-4 py-2 rounded-xl text-xs font-bold text-gray-500 hover:text-[#1A1A1A] hover:bg-gray-200 transition-all" title="Limpar campos">
-                      <RotateCcw className="w-3.5 h-3.5" /> Limpar
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Data</label>
-                    <DateInput required value={date} onChange={e => setDate(e.target.value)} className="liquid-input w-full px-5 py-3.5 rounded-xl text-[#1A1A1A] font-semibold" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Categoria</label>
-                    <div className="relative group">
-                      <select required value={category} onChange={e => setCategory(e.target.value)} className="liquid-input w-full px-5 py-3.5 rounded-xl appearance-none text-[#1A1A1A] font-semibold cursor-pointer">
-                        <option value="" disabled>Selecione...</option>
-                        {settings.categories.map((c, i) => <option key={i} value={c.label}>{c.label}</option>)}
-                      </select>
-                      <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                        <Tag className="w-4 h-4" />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Descrição</label>
-                    <input type="text" required placeholder="Ex: Café com cliente" value={description} onChange={e => setDescription(e.target.value)} className="liquid-input w-full px-5 py-3.5 rounded-xl text-[#1A1A1A] font-semibold placeholder-gray-400" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Loja / Grupo</label>
-                    <div className="relative group">
-                      <select required value={store} onChange={e => setStore(e.target.value)} className="liquid-input w-full px-5 py-3.5 rounded-xl appearance-none text-[#1A1A1A] font-semibold cursor-pointer">
-                        <option value="" disabled>Selecione...</option>
-                        {STORES_LIST.map((l, i) => <option key={i} value={l}>{l}</option>)}
-                      </select>
-                      <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                        <Store className="w-4 h-4" />
-                      </div>
-                    </div>
-                    {!editingId && store.includes("Piracicaba") && <p className="text-[10px] text-[#FDB827] font-bold px-3 pt-1">* Divide por 3</p>}
-                    {!editingId && store.includes("Amparo") && <p className="text-[10px] text-[#7C5CFC] font-bold px-3 pt-1">* Divide por 2</p>}
-                    {!editingId && store === "Todas" && <p className="text-[10px] text-emerald-500 font-bold px-3 pt-1">* Divide por 5</p>}
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider ml-1">Valor ({settings.currency})</label>
-                    <div className="relative group">
-                      <input type="text" inputMode="numeric" required placeholder="0,00" value={amount} onChange={handleAmountChange} onPaste={handleAmountPaste} className="liquid-input w-full pl-5 pr-12 py-3.5 rounded-xl text-[#1A1A1A] font-bold text-lg" />
-                      <div className="absolute right-5 top-1/2 -translate-y-1/2 pointer-events-none text-gray-400">
-                        <DollarSign className="w-4 h-4" />
-                      </div>
-                    </div>
-                  </div>
-                    <div className="space-y-2 md:col-span-2">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wide ml-1">Observações (Opcional)</label>
-                      <input type="text" value={notes} onChange={e => setNotes(e.target.value)} className="liquid-input w-full px-5 py-3.5 rounded-xl text-slate-600 font-medium text-sm placeholder-slate-400" />
-                    </div>
-                  </div>
-<button type="submit" disabled={isSubmitting} className={`w-full py-4 px-6 rounded-xl font-bold text-base flex items-center justify-center gap-2 mt-4 disabled:opacity-60 disabled:cursor-not-allowed transition-colors ${editingId ? 'bg-black text-white hover:bg-gray-800' : 'bg-[#FDB827] text-[#1A1A1A] hover:bg-[#E5A71F]'}`}>
-                  {isSubmitting ? (
-                    <svg className="w-5 h-5 animate-spin" viewBox="0 0 24 24" fill="none">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                    </svg>
-                  ) : editingId ? <Check className="w-5 h-5" /> : <Plus className="w-5 h-5" />}
-                  {isSubmitting ? "Enviando..." : editingId ? "Salvar Alterações" : "Adicionar Despesa"}
-                </button>
-              </form>
+            <div className="min-w-0">
+              <h1 className="text-sm font-bold text-white tracking-tight leading-tight truncate">Miplace Despesas</h1>
+              <span className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold block">Enterprise</span>
+              <span className="text-[8px] text-slate-500 uppercase tracking-widest block -mt-0.5">Dashboard</span>
             </div>
           </div>
 
-          {/* Empty state */}
-          {expenses.length === 0 && !expensesLoading && (
-            <div className="text-center py-24 rounded-[40px] border-2 border-dashed border-gray-200 no-print flex flex-col items-center justify-center text-gray-400 bg-white">
-              <div className="bg-[#EBE7D9] p-6 rounded-[32px] mb-4">
-                <AlertCircle className="w-10 h-10 text-[#7C5CFC]" />
-              </div>
-              <p className="font-bold text-[#1A1A1A] text-lg">Banco de Dados Vazio.</p>
-              <button onClick={handleEmptyStateRestore} className="mt-6 px-8 py-4 bg-[#FDB827] hover:bg-[#E5A71F] text-[#1A1A1A] font-bold rounded-xl transition-all flex items-center gap-2">
-                <Upload className="w-5 h-5" /> Importar Backup do PC
+          {/* Nav Links */}
+          <nav className="mt-6 space-y-1">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 px-3">Principal</p>
+            
+            <button
+              onClick={() => { setCurrentView('dashboard'); setMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
+                currentView === 'dashboard'
+                  ? 'bg-white/10 text-white font-semibold shadow-sm border border-white/10'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Home className="w-4 h-4 text-amber-400" />
+              <span>Visão Geral</span>
+            </button>
+
+            <button
+              onClick={() => { setCurrentView('calendar'); setMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
+                currentView === 'calendar'
+                  ? 'bg-white/10 text-white font-semibold shadow-sm border border-white/10'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Calendar className="w-4 h-4 text-cyan-400" />
+              <span>Calendário</span>
+            </button>
+
+            <button
+              onClick={() => { setCurrentView('analytics'); setMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
+                currentView === 'analytics'
+                  ? 'bg-white/10 text-white font-semibold shadow-sm border border-white/10'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <BarChart2 className="w-4 h-4 text-purple-400" />
+              <span>Categorias & Mix</span>
+            </button>
+
+            <button
+              onClick={() => { setCurrentView('payments'); setMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
+                currentView === 'payments'
+                  ? 'bg-white/10 text-white font-semibold shadow-sm border border-white/10'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <CheckSquare className="w-4 h-4 text-emerald-400" />
+              <span>Pagamentos Fixos</span>
+            </button>
+
+            {/* Relatorios & Tools */}
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 pt-6 px-3">
+              Relatórios & Nuvem
+            </p>
+
+            <button
+              onClick={handlePrint}
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
+            >
+              <Printer className="w-4 h-4 text-slate-400" />
+              <span>Exportar PDF</span>
+            </button>
+
+            <button
+              onClick={() => { setShowBackupOptions(true); setMobileMenuOpen(false); }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
+            >
+              <HardDrive className="w-4 h-4 text-slate-400" />
+              <span>Backup & Nuvem</span>
+            </button>
+
+            {/* Aba Exclusiva "Registros" para o Administrador Dark Morellato */}
+            {isDarkAdmin && (
+              <button
+                onClick={() => { setCurrentView('audit'); setMobileMenuOpen(false); }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
+                  currentView === 'audit'
+                    ? 'bg-white/10 text-white font-semibold shadow-sm border border-white/10'
+                    : 'text-slate-400 hover:text-white hover:bg-white/5'
+                }`}
+              >
+                <History className="w-4 h-4 text-amber-400" />
+                <span>Registros</span>
+                <span className="ml-auto text-[9px] font-bold bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded">
+                  Admin
+                </span>
               </button>
+            )}
+
+            <button
+              onClick={() => { setIsSettingsOpen(true); setMobileMenuOpen(false); }}
+              className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
+            >
+              <Settings className="w-4 h-4 text-slate-400" />
+              <span>Configurações</span>
+            </button>
+          </nav>
+        </div>
+
+        {/* User Profile Footer with Logout */}
+        <div className="pt-4 border-t border-white/10 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+            <div className="w-9 h-9 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-xs font-bold text-amber-400 shrink-0">
+              {userInitials}
             </div>
-          )}
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] text-slate-400 uppercase font-semibold truncate tracking-wider">
+                {sessionUser?.role || "Administrador"}
+              </p>
+              <p className="text-sm font-medium text-slate-200 truncate">
+                {sessionUser?.name || settings.employeeName}
+              </p>
+            </div>
+          </div>
 
-            {/* Expenses list */}
-            {expenses.length > 0 && (
-              <div className="glass-panel p-6 rounded-3xl flex flex-col gap-8 print:border-none print:shadow-none print:rounded-none print:p-0 print:mb-6">
-                {/* Filters and controls */}
-                <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-                  <div className="text-center md:text-left">
-                    <p className="text-xs text-slate-400 uppercase font-bold mb-2 no-print tracking-widest">
-                      Total Geral {searchTerm ? "(Busca)" : filterMode === 'month' ? `(Mês: ${formatMonthBR(selectedMonth)})` : "(Do Dia)"}
-                    </p>
-                    <p className="text-4xl font-extrabold text-slate-800 tracking-tight drop-shadow-sm">
-                      <span className="text-xl text-slate-400 font-bold mr-1 align-top relative top-1">{settings.currency}</span>
-                      {formatCurrency(totalGeneral)}
-                    </p>
-                    <div className="mt-2 inline-block no-print">
-                      <span className="text-xs font-bold text-slate-500 bg-white/60 border border-white px-3 py-1 rounded-full shadow-sm">
-                        {filteredExpenses.length} registros
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex gap-4 w-full md:w-auto no-print">
-                    <button onClick={handlePrint} className="flex-1 md:flex-none justify-center flex items-center gap-2 px-5 py-3 bg-white/60 hover:bg-white border border-white/80 rounded-xl text-slate-600 font-bold transition-all shadow-sm">
-                      <Printer className="w-4 h-4" /> Imprimir
-                    </button>
-                    <button onClick={handleExportCSV} className="flex-1 md:flex-none justify-center flex items-center gap-2 px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl shadow-lg shadow-emerald-200/50 font-bold transition-transform hover:-translate-y-0.5">
-                      <Download className="w-4 h-4" /> Exportar
-                    </button>
-                  </div>
-                </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {syncStatus === 'synced' && <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block shadow-[0_0_6px_rgba(52,211,153,0.8)]" title="Online" />}
+            {syncStatus === 'syncing' && <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse inline-block" title="Sincronizando..." />}
+            {syncStatus === 'error' && <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" title="Erro" />}
+            
+            <button
+              onClick={handleLogout}
+              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-white/5 rounded-lg transition-colors cursor-pointer ml-1"
+              title="Sair / Trocar Usuário"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </aside>
 
-                {/* Search and filter bar */}
-                <div className="flex flex-col md:flex-row gap-6 no-print items-end md:items-center bg-white/30 p-4 rounded-2xl border border-white/40">
-                  <div className="relative flex-1 w-full group">
-                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                      <Search className="w-5 h-5 text-slate-400" />
-                    </div>
-                    <input
-                      type="text"
-                      placeholder="Pesquisar..."
-                      value={searchTerm}
-                      onChange={e => setSearchTerm(e.target.value)}
-                      className="w-full pl-11 pr-4 py-2.5 bg-white/60 border border-white rounded-xl focus:bg-white focus:ring-2 focus:ring-blue-100 outline-none transition-all text-sm font-medium text-slate-600 placeholder-slate-400"
-                    />
-                  </div>
-                  
-                  {!searchTerm && (
-                    <>
-                      {/* Dia/Mês toggle */}
-                      <div className="flex bg-white/60 p-1 rounded-xl border border-white shadow-sm mr-2">
-                        <button 
-                          onClick={() => setFilterMode('day')} 
-                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${filterMode === 'day' ? 'bg-gradient-to-r from-blue-500 to-blue-400 text-white shadow-md' : 'text-slate-500 hover:bg-white/50'}`}
-                        >
-                          Dia
-                        </button>
-                        <button 
-                          onClick={() => setFilterMode('month')} 
-                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all ${filterMode === 'month' ? 'bg-gradient-to-r from-blue-500 to-blue-400 text-white shadow-md' : 'text-slate-500 hover:bg-white/50'}`}
-                        >
-                          Mês
-                        </button>
-                      </div>
+      {/* Backdrop for mobile drawer */}
+      {mobileMenuOpen && (
+        <div
+          onClick={() => setMobileMenuOpen(false)}
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+        />
+      )}
 
-                      {/* Date/Month navigation */}
-                      {filterMode === 'day' ? (
-                        <div className="flex items-center gap-2 bg-white/60 p-1 rounded-xl border border-white shadow-sm">
-                          <button 
-                            onClick={() => {
-                              const idx = availableDates.indexOf(selectedDate);
-                              if (idx > 0) setSelectedDate(availableDates[idx - 1]);
-                            }} 
-                            disabled={availableDates.indexOf(selectedDate) <= 0}
-                            className="p-2 text-slate-500 hover:text-blue-600 hover:bg-white/50 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                          >
-                            <ChevronLeft className="w-5 h-5"/>
-                          </button>
-                          <span className="font-bold text-slate-700 px-2 min-w-[100px] text-center text-sm">
-                            {selectedDate ? formatDateBR(selectedDate) : '...'}
-                          </span>
-                          <button 
-                            onClick={() => {
-                              const idx = availableDates.indexOf(selectedDate);
-                              if (idx < availableDates.length - 1) setSelectedDate(availableDates[idx + 1]);
-                            }}
-                            disabled={availableDates.indexOf(selectedDate) >= availableDates.length - 1}
-                            className="p-2 text-slate-500 hover:text-blue-600 hover:bg-white/50 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                          >
-                            <ChevronRight className="w-5 h-5"/>
-                          </button>
+      {/* Main Light Clean Canvas (Matches Reference Image) */}
+      <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
+        {/* Top Header Bar */}
+        <header className="border-b border-slate-200/90 px-6 sm:px-8 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white sticky top-0 z-20 no-print shadow-xs">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 leading-tight">
+              {currentView === 'audit' ? 'Registros de Auditoria' : `Resultados: ${currentPeriodLabel}`}
+            </h2>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                {currentView === 'audit' ? 'Monitoramento em tempo real' : 'Atualizado em tempo real'}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+            {/* Period Quick Select & Actions */}
+            {currentView === 'dashboard' && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleResetAllToHome}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold rounded-lg transition-all shadow-xs cursor-pointer"
+                  title="Voltar ao início e resetar filtros"
+                >
+                  <Home className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Início</span>
+                </button>
+                <button
+                  onClick={handlePrint}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-all shadow-xs cursor-pointer"
+                  title="Pré-visualizar e Imprimir"
+                >
+                  <Printer className="w-3.5 h-3.5 text-slate-500" />
+                  <span className="hidden sm:inline">Imprimir</span>
+                </button>
+                <button
+                  onClick={handleExportCSV}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-semibold rounded-lg transition-all shadow-xs cursor-pointer"
+                  title="Exportar CSV"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="hidden sm:inline">CSV</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </header>
+
+        {/* Dynamic Views Content Area */}
+        <div className="p-6 sm:p-8 space-y-6">
+          {currentView === 'calendar' ? (
+            <Suspense fallback={<LoadingSpinner />}>
+              <ExpenseCalendar
+                fixedPayments={fixedPayments}
+                checkedState={checks}
+                onToggleCheck={toggleCheck}
+                showToast={showToast}
+                syncError={syncError}
+              />
+            </Suspense>
+          ) : currentView === 'analytics' ? (
+            <Suspense fallback={<LoadingSpinner />}>
+              <ExpenseAnalytics
+                expenses={expenses}
+                currency={settings.currency}
+              />
+            </Suspense>
+          ) : currentView === 'payments' ? (
+            <Suspense fallback={<LoadingSpinner />}>
+              <FixedPaymentsManager
+                showToast={showToast}
+              />
+            </Suspense>
+          ) : currentView === 'audit' && isDarkAdmin ? (
+            <Suspense fallback={<LoadingSpinner />}>
+              <AuditManager />
+            </Suspense>
+          ) : (
+            <>
+              {/* KPI Cards Grid (Matches Reference Image Format) */}
+              {expenses.length > 0 && (
+                <div className="space-y-5 no-print">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    {/* Card 1: Volume Total (Image Style) */}
+                    <div className="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-sm relative overflow-hidden flex flex-col justify-between hover:border-slate-300 transition-all">
+                      <div className="flex items-center justify-between">
+                        <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+                          <DollarSign className="w-4 h-4" />
                         </div>
-                      ) : (
-                        <div className="flex items-center gap-2 bg-white/60 p-1 rounded-xl border border-white shadow-sm">
-                          <button 
-                            onClick={() => {
-                              const idx = availableMonths.indexOf(selectedMonth);
-                              if (idx > 0) setSelectedMonth(availableMonths[idx - 1]);
-                            }}
-                            disabled={availableMonths.indexOf(selectedMonth) <= 0}
-                            className="p-2 text-slate-500 hover:text-blue-600 hover:bg-white/50 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                          >
-                            <ChevronLeft className="w-5 h-5"/>
-                          </button>
-                          <span className="font-bold text-slate-700 px-2 min-w-[120px] text-center text-sm capitalize">
-                            {selectedMonth ? formatMonthBR(selectedMonth) : '...'}
-                          </span>
-                          <button 
-                            onClick={() => {
-                              const idx = availableMonths.indexOf(selectedMonth);
-                              if (idx < availableMonths.length - 1) setSelectedMonth(availableMonths[idx + 1]);
-                            }}
-                            disabled={availableMonths.indexOf(selectedMonth) >= availableMonths.length - 1}
-                            className="p-2 text-slate-500 hover:text-blue-600 hover:bg-white/50 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed transition-all"
-                          >
-                            <ChevronRight className="w-5 h-5"/>
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Group by toggle */}
-                      <div className="h-6 w-px bg-slate-300 hidden md:block"></div>
-                      <div className="flex bg-white/60 p-1 rounded-xl border border-white shadow-sm">
-                        <button 
-                          onClick={() => setGroupBy('date')} 
-                          className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${groupBy === 'date' ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}
-                        >
-                          Data
-                        </button>
-                        <button 
-                          onClick={() => setGroupBy('store')} 
-                          className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${groupBy === 'store' ? 'bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-800'}`}
-                        >
-                          Loja
-                        </button>
-                      </div>
-                    </>
-                  )}
-                  
-                  {searchTerm && (
-                    <div className="bg-yellow-100 text-yellow-700 px-3 py-2 rounded-lg text-xs font-bold border border-yellow-200">
-                      Modo Busca Ativo (Global)
-                    </div>
-                  )}
-                </div>
-
-                {/* Grouped expenses tables */}
-                <div className="space-y-8 print:space-y-6">
-                  {groupedExpenses.map(group => (
-                    <div key={group.key} className="print-break-inside-avoid">
-                      <div className="flex items-center justify-between mb-4 px-2">
-                        <h3 className="text-lg font-bold text-slate-700 flex items-center gap-3">
-                          <div className="bg-white/80 p-2 rounded-xl shadow-sm text-blue-500 border border-white">
-                            {groupBy === 'date' ? (
-                              <Calendar className="w-5 h-5" />
-                            ) : (
-                              <img src={STORE_IMAGES[group.key] || STORE_IMAGES["default"]} alt={group.key} className="w-5 h-5 rounded-full" />
-                            )}
-                          </div>
-                          {groupBy === 'date' ? formatDateBR(group.key) : group.key}
-                        </h3>
-                        <span className="text-sm font-bold text-slate-600 bg-white/60 px-4 py-1.5 rounded-full border border-white shadow-sm">
-                          {settings.currency} {formatCurrency(group.total)}
+                        <span className="border border-slate-200 bg-slate-50 text-slate-600 rounded px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
+                          Volume Total
                         </span>
                       </div>
 
-                      <div className="glass-panel rounded-2xl overflow-hidden print:shadow-none print:border print:border-slate-300 print:rounded-none p-0">
-                        <div className="overflow-x-auto max-h-[500px] overflow-y-auto print-scroll-fix">
-                          <table className="w-full text-left text-sm relative border-collapse">
-                            <thead className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-white print:bg-white print:backdrop-blur-none print:border-slate-300">
-                              <tr>
-                                {groupBy === 'date' && <th className="px-6 py-4 font-bold text-slate-400 print:text-black uppercase text-[10px] tracking-widest">Loja</th>}
-                                <th className="px-6 py-4 font-bold text-slate-400 print:text-black uppercase text-[10px] tracking-widest">Quem</th>
-                                <th className="px-6 py-4 font-bold text-slate-400 print:text-black uppercase text-[10px] tracking-widest">Categoria</th>
-                                <th className="px-6 py-4 font-bold text-slate-400 print:text-black uppercase text-[10px] tracking-widest">Data</th>
-                                <th className="px-6 py-4 font-bold text-slate-400 print:text-black uppercase text-[10px] tracking-widest">Descrição</th>
-                                <th className="px-6 py-4 font-bold text-slate-400 print:text-black uppercase text-[10px] tracking-widest text-right">Valor</th>
-                                <th className="px-6 py-4 font-bold text-slate-400 print:text-black uppercase text-[10px] tracking-widest text-center no-print">Opções</th>
+                      <div className="mt-4">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Filtrado</p>
+                        <h3 className="text-3xl sm:text-4xl font-bold mt-1 text-slate-950 tabular-nums tracking-tight">
+                          {settings.currency} {formatCurrency(totalGeneral)}
+                        </h3>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
+                          {filteredExpenses.length} Lançamentos
+                        </span>
+                        <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
+                          <TrendingUp className="w-3.5 h-3.5" /> Base Ativa
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Card 2: Mix Ativo / Histórico */}
+                    <div className="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-sm relative overflow-hidden flex flex-col justify-between hover:border-slate-300 transition-all">
+                      <div className="flex items-center justify-between">
+                        <div className="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center">
+                          <BarChart2 className="w-4 h-4" />
+                        </div>
+                        <span className="border border-slate-200 bg-slate-50 text-slate-600 rounded px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
+                          Mix Ativo
+                        </span>
+                      </div>
+
+                      <div className="mt-4">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Volume Geral Acumulado</p>
+                        <h3 className="text-3xl sm:text-4xl font-bold mt-1 text-slate-950 tabular-nums tracking-tight">
+                          {settings.currency} {formatCurrency(expenses.reduce((s, e) => s + e.amount, 0))}
+                        </h3>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
+                          {expenses.length} Total Geral
+                        </span>
+                        <span className="text-xs text-cyan-600 font-semibold">
+                          Histórico Completo
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Card 3: Top Performer / Lojas */}
+                    <div className="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-sm relative overflow-hidden flex flex-col justify-between hover:border-slate-300 transition-all">
+                      <div className="flex items-center justify-between">
+                        <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
+                          <Store className="w-4 h-4" />
+                        </div>
+                        <span className="border border-slate-200 bg-slate-50 text-slate-600 rounded px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
+                          Top Performer
+                        </span>
+                      </div>
+
+                      <div className="mt-4">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Lojas Ativas</p>
+                        <h3 className="text-3xl sm:text-4xl font-bold mt-1 text-slate-950 tabular-nums tracking-tight">
+                          {Object.keys(totalsByStore).length} Lojas
+                        </h3>
+                      </div>
+
+                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
+                          Centros de Custo
+                        </span>
+                        <span className="text-xs text-purple-600 font-semibold">
+                          Em Operação
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Store Breakdown Horizontal Bar Cards */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 pt-1">
+                    {Object.entries(totalsByStore).sort((a, b) => b[1] - a[1]).map(([storeName, val]) => (
+                      <div
+                        key={storeName}
+                        className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm hover:border-slate-300 transition-all"
+                      >
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <img
+                            src={STORE_IMAGES[storeName] || STORE_IMAGES["default"]}
+                            alt={storeName}
+                            className="w-5 h-5 rounded object-cover"
+                          />
+                          <span className="text-[10px] uppercase font-bold text-slate-500 truncate block tracking-wider">
+                            {storeName}
+                          </span>
+                        </div>
+                        <span className="text-sm font-bold text-slate-900 block tabular-nums">
+                          {settings.currency} {formatCurrency(val)}
+                        </span>
+                        <div className="h-1.5 w-full rounded-full bg-slate-100 mt-2.5 overflow-hidden border border-slate-100">
+                          <div
+                            className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-500"
+                            style={{ width: `${totalGeneral > 0 ? Math.min((val / totalGeneral) * 100, 100) : 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Form: Novo / Editar Lançamento */}
+              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden no-print">
+                <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                  <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+                      {editingId ? <Edit className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                    </div>
+                    {editingId ? "Editar Lançamento (Modo Seguro)" : "Novo Lançamento"}
+                  </h3>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {editingId && (
+                      <button
+                        type="button"
+                        onClick={() => { resetForm(); showToast("Edição cancelada", "info"); }}
+                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-200 text-slate-700 hover:bg-slate-300 transition-colors cursor-pointer flex items-center gap-1"
+                      >
+                        <X className="w-3.5 h-3.5" /> Cancelar Edição
+                      </button>
+                    )}
+                    {!editingId && (
+                      <button
+                        type="button"
+                        onClick={resetForm}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-all cursor-pointer"
+                        title="Limpar campos do formulário"
+                      >
+                        <RotateCcw className="w-3 h-3" /> Limpar
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleResetAllToHome}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-100/70 border border-amber-200 text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-all cursor-pointer shadow-2xs"
+                      title="Resetar filtros, buscas e voltar ao início do painel"
+                    >
+                      <Home className="w-3.5 h-3.5 text-amber-700" /> Voltar ao Início
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-6 sm:p-8">
+                  <form onSubmit={handleSubmit} className="space-y-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                      {/* Date */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Data</label>
+                        <DateInput
+                          required
+                          value={date}
+                          onChange={e => setDate(e.target.value)}
+                          className="liquid-input w-full px-4 py-2.5 rounded-lg text-sm font-semibold"
+                        />
+                      </div>
+
+                      {/* Category */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Categoria</label>
+                        <div className="relative">
+                          <select
+                            required
+                            value={category}
+                            onChange={e => setCategory(e.target.value)}
+                            className="liquid-input w-full px-4 py-2.5 rounded-lg appearance-none text-sm font-semibold cursor-pointer text-slate-900"
+                          >
+                            <option value="" disabled className="text-slate-400">Selecione uma categoria...</option>
+                            {settings.categories.map((c, i) => (
+                              <option key={i} value={c.label}>
+                                {c.label}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <Tag className="w-4 h-4" />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Description */}
+                      <div className="space-y-1.5 md:col-span-2">
+                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Descrição</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Ex: Café com cliente, material de escritório..."
+                          value={description}
+                          onChange={e => setDescription(e.target.value)}
+                          className="liquid-input w-full px-4 py-2.5 rounded-lg text-sm font-medium"
+                        />
+                      </div>
+
+                      {/* Store / Group */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Loja / Grupo</label>
+                        <div className="relative">
+                          <select
+                            required
+                            value={store}
+                            onChange={e => setStore(e.target.value)}
+                            className="liquid-input w-full px-4 py-2.5 rounded-lg appearance-none text-sm font-semibold cursor-pointer text-slate-900"
+                          >
+                            <option value="" disabled className="text-slate-400">Selecione a loja...</option>
+                            {STORES_LIST.map((l, i) => (
+                              <option key={i} value={l}>
+                                {l}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <Store className="w-4 h-4" />
+                          </div>
+                        </div>
+                        {!editingId && store.includes("Piracicaba") && (
+                          <p className="text-[11px] text-amber-600 font-medium pt-1">* Divide automaticamente por 3 lojas</p>
+                        )}
+                        {!editingId && store.includes("Amparo") && (
+                          <p className="text-[11px] text-purple-600 font-medium pt-1">* Divide automaticamente por 2 lojas</p>
+                        )}
+                        {!editingId && store === "Todas" && (
+                          <p className="text-[11px] text-emerald-600 font-medium pt-1">* Divide automaticamente por 5 lojas</p>
+                        )}
+                      </div>
+
+                      {/* Amount */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                          Valor ({settings.currency})
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            required
+                            placeholder="0,00"
+                            value={amount}
+                            onChange={handleAmountChange}
+                            onPaste={handleAmountPaste}
+                            className="liquid-input w-full pl-4 pr-10 py-2.5 rounded-lg text-sm font-bold text-slate-900 tabular-nums"
+                          />
+                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            <DollarSign className="w-4 h-4" />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Notes */}
+                      <div className="space-y-1.5 md:col-span-2">
+                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                          Observações (Opcional)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Detalhes adicionais, número de nota..."
+                          value={notes}
+                          onChange={e => setNotes(e.target.value)}
+                          className="liquid-input w-full px-4 py-2.5 rounded-lg text-sm font-normal text-slate-700"
+                        />
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full py-3 px-6 rounded-lg font-bold text-sm bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 active:scale-[0.99] transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 mt-4 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {isSubmitting ? (
+                        <svg className="w-5 h-5 animate-spin text-slate-950" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                        </svg>
+                      ) : editingId ? (
+                        <Check className="w-4 h-4" />
+                      ) : (
+                        <Plus className="w-4 h-4" />
+                      )}
+                      {isSubmitting ? "Gravando..." : editingId ? "Salvar Alterações" : "Adicionar Lançamento"}
+                    </button>
+                  </form>
+                </div>
+              </div>
+
+              {/* Empty state */}
+              {expenses.length === 0 && !expensesLoading && (
+                <div className="text-center py-20 rounded-2xl border border-dashed border-slate-300 no-print flex flex-col items-center justify-center text-slate-500 bg-white shadow-sm">
+                  <div className="w-14 h-14 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-center mb-4 text-amber-600">
+                    <AlertCircle className="w-7 h-7" />
+                  </div>
+                  <p className="font-bold text-slate-900 text-base">Banco de Dados Vazio</p>
+                  <p className="text-xs text-slate-500 mt-1 max-w-sm">Nenhum lançamento foi registrado ainda. Comece adicionando uma despesa ou importe um backup.</p>
+                  <button
+                    onClick={handleEmptyStateRestore}
+                    className="mt-6 px-6 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold text-sm rounded-lg transition-all flex items-center gap-2 shadow-sm cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4" /> Importar Backup do Computador
+                  </button>
+                </div>
+              )}
+
+              {/* Expenses List & Interactive Data Grids */}
+              {expenses.length > 0 && (
+                <div className="space-y-6">
+                  {/* Search & Period Selector Controls */}
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 no-print">
+                    {/* Search Input - Protected from Browser Autofill */}
+                    <div className="relative flex-1 w-full">
+                      <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                        <Search className="w-4 h-4" />
+                      </div>
+                      <input
+                        type="text"
+                        name="search_query_despesas_non_auth"
+                        id="search_query_despesas_non_auth"
+                        autoComplete="new-password"
+                        autoCorrect="off"
+                        spellCheck="false"
+                        data-form-type="other"
+                        data-lpignore="true"
+                        placeholder="Pesquisar por descrição, categoria, loja..."
+                        value={searchTerm}
+                        onChange={e => setSearchTerm(e.target.value)}
+                        className="w-full pl-10 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-400 focus:bg-white text-xs sm:text-sm text-slate-900 placeholder-slate-400"
+                      />
+                      {searchTerm && (
+                        <button
+                          type="button"
+                          onClick={() => setSearchTerm('')}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700 cursor-pointer"
+                          title="Limpar pesquisa"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    {!searchTerm && (
+                      <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+                        {/* Day / Month Toggle */}
+                        <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                          <button
+                            onClick={() => setFilterMode('day')}
+                            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                              filterMode === 'day'
+                                ? 'bg-white text-slate-900 shadow-sm font-bold'
+                                : 'text-slate-500 hover:text-slate-900'
+                            }`}
+                          >
+                            Dia
+                          </button>
+                          <button
+                            onClick={() => setFilterMode('month')}
+                            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                              filterMode === 'month'
+                                ? 'bg-white text-slate-900 shadow-sm font-bold'
+                                : 'text-slate-500 hover:text-slate-900'
+                            }`}
+                          >
+                            Mês
+                          </button>
+                        </div>
+
+                        {/* Date Navigation */}
+                        {filterMode === 'day' ? (
+                          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
+                            <button
+                              onClick={() => {
+                                const idx = availableDates.indexOf(selectedDate);
+                                if (idx > 0) setSelectedDate(availableDates[idx - 1]);
+                              }}
+                              disabled={availableDates.indexOf(selectedDate) <= 0}
+                              className="p-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 disabled:cursor-not-allowed rounded cursor-pointer"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <span className="font-bold text-slate-800 px-2 min-w-[90px] text-center text-xs">
+                              {selectedDate ? formatDateBR(selectedDate) : '...'}
+                            </span>
+                            <button
+                              onClick={() => {
+                                const idx = availableDates.indexOf(selectedDate);
+                                if (idx < availableDates.length - 1) setSelectedDate(availableDates[idx + 1]);
+                              }}
+                              disabled={availableDates.indexOf(selectedDate) >= availableDates.length - 1}
+                              className="p-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 disabled:cursor-not-allowed rounded cursor-pointer"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg border border-slate-200">
+                            <button
+                              onClick={() => {
+                                const idx = availableMonths.indexOf(selectedMonth);
+                                if (idx > 0) setSelectedMonth(availableMonths[idx - 1]);
+                              }}
+                              disabled={availableMonths.indexOf(selectedMonth) <= 0}
+                              className="p-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 disabled:cursor-not-allowed rounded cursor-pointer"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </button>
+                            <span className="font-bold text-slate-800 px-2 min-w-[110px] text-center text-xs capitalize">
+                              {selectedMonth ? formatMonthBR(selectedMonth) : '...'}
+                            </span>
+                            <button
+                              onClick={() => {
+                                const idx = availableMonths.indexOf(selectedMonth);
+                                if (idx < availableMonths.length - 1) setSelectedMonth(availableMonths[idx + 1]);
+                              }}
+                              disabled={availableMonths.indexOf(selectedMonth) >= availableMonths.length - 1}
+                              className="p-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 disabled:cursor-not-allowed rounded cursor-pointer"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Group By Toggle */}
+                        <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                          <button
+                            onClick={() => setGroupBy('date')}
+                            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                              groupBy === 'date'
+                                ? 'bg-amber-400 text-slate-950 font-bold shadow-xs'
+                                : 'text-slate-500 hover:text-slate-900'
+                            }`}
+                          >
+                            Data
+                          </button>
+                          <button
+                            onClick={() => setGroupBy('store')}
+                            className={`px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                              groupBy === 'store'
+                                ? 'bg-amber-400 text-slate-950 font-bold shadow-xs'
+                                : 'text-slate-500 hover:text-slate-900'
+                            }`}
+                          >
+                            Loja
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Grouped Data Grids */}
+                  <div className="space-y-6">
+                    {groupedExpenses.map(group => (
+                      <div key={group.key} className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
+                        {/* Table Group Header */}
+                        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-slate-50">
+                          <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2.5">
+                            {groupBy === 'date' ? (
+                              <Calendar className="w-4 h-4 text-slate-600" />
+                            ) : (
+                              <img
+                                src={STORE_IMAGES[group.key] || STORE_IMAGES["default"]}
+                                alt={group.key}
+                                className="w-5 h-5 rounded object-cover"
+                              />
+                            )}
+                            <span>{groupBy === 'date' ? formatDateBR(group.key) : group.key}</span>
+                          </h4>
+                          <span className="text-xs font-bold text-slate-900 bg-white border border-slate-200 px-3 py-1 rounded-full tabular-nums shadow-xs">
+                            {settings.currency} {formatCurrency(group.total)}
+                          </span>
+                        </div>
+
+                        {/* Data Grid */}
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-semibold">
+                                {groupBy === 'date' && (
+                                  <th
+                                    onClick={() => handleSort('store')}
+                                    className="px-6 py-3 cursor-pointer hover:text-slate-900 transition-colors group"
+                                  >
+                                    <div className="flex items-center gap-1.5">
+                                      <span>Loja</span>
+                                      {renderSortIcon('store')}
+                                    </div>
+                                  </th>
+                                )}
+                                <th
+                                  onClick={() => handleSort('employeeName')}
+                                  className="px-6 py-3 cursor-pointer hover:text-slate-900 transition-colors group"
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span>Quem</span>
+                                    {renderSortIcon('employeeName')}
+                                  </div>
+                                </th>
+                                <th
+                                  onClick={() => handleSort('category')}
+                                  className="px-6 py-3 cursor-pointer hover:text-slate-900 transition-colors group"
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span>Categoria</span>
+                                    {renderSortIcon('category')}
+                                  </div>
+                                </th>
+                                <th
+                                  onClick={() => handleSort('date')}
+                                  className="px-6 py-3 cursor-pointer hover:text-slate-900 transition-colors group"
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span>Data</span>
+                                    {renderSortIcon('date')}
+                                  </div>
+                                </th>
+                                <th
+                                  onClick={() => handleSort('description')}
+                                  className="px-6 py-3 cursor-pointer hover:text-slate-900 transition-colors group"
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <span>Descrição</span>
+                                    {renderSortIcon('description')}
+                                  </div>
+                                </th>
+                                <th
+                                  onClick={() => handleSort('amount')}
+                                  className="px-6 py-3 text-right cursor-pointer hover:text-slate-900 transition-colors group"
+                                >
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    <span>Valor</span>
+                                    {renderSortIcon('amount')}
+                                  </div>
+                                </th>
+                                <th className="px-6 py-3 text-center no-print w-24">Ações</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
+                            <tbody className="divide-y divide-slate-100 text-slate-700">
                               {group.items.map(ex => (
-                                <tr key={ex.id} className="hover:bg-blue-50/40 transition-colors group">
+                                <tr key={ex.id} className="hover:bg-slate-50/80 transition-colors group">
                                   {groupBy === 'date' && (
-                                    <td className="px-6 py-4 whitespace-nowrap">
+                                    <td className="px-6 py-3.5 whitespace-nowrap">
                                       <div className="flex items-center gap-2">
-                                        <img src={STORE_IMAGES[ex.store] || STORE_IMAGES["default"]} alt={ex.store} className="w-5 h-5 rounded-full print:w-5 print:h-5" />
-                                        <span className={`inline-flex items-center px-3 py-1 rounded-lg text-[10px] font-bold shadow-sm border border-white/50 backdrop-blur-sm print:hidden ${getStoreColorClass(ex.store)}`}>
-                                          {ex.store}
-                                        </span>
-                                        <span className="hidden print:inline font-bold text-[10px] text-slate-800">
-                                          {ex.store}
-                                        </span>
+                                        <img
+                                          src={STORE_IMAGES[ex.store] || STORE_IMAGES["default"]}
+                                          alt={ex.store}
+                                          className="w-4 h-4 rounded object-cover"
+                                        />
+                                        <span className="font-semibold text-slate-900">{ex.store}</span>
                                       </div>
                                     </td>
                                   )}
-                                  <td className="px-6 py-4 text-slate-600 font-medium text-xs">{ex.employeeName || settings.employeeName}</td>
-                                  <td className="px-6 py-4 text-slate-600 text-xs font-medium">
-                                    <span className="bg-white/60 border border-white px-2 py-1 rounded-md shadow-sm">{ex.category}</span>
+                                  <td className="px-6 py-3.5 text-slate-500 font-medium whitespace-nowrap">
+                                    {ex.employeeName || settings.employeeName}
                                   </td>
-                                  <td className="px-6 py-4 whitespace-nowrap text-slate-500 font-medium text-xs">{formatDateBR(ex.date)}</td>
-                                  <td className="px-6 py-4">
-                                    <div className="font-semibold text-slate-700 leading-tight">{ex.description}</div>
-                                    {ex.notes && <div className="text-xs text-slate-400 mt-1 italic">{ex.notes}</div>}
+                                  <td className="px-6 py-3.5 whitespace-nowrap">
+                                    <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
+                                      {ex.category}
+                                    </span>
                                   </td>
-                                  <td className="px-6 py-4 text-right font-bold text-slate-700 tabular-nums">
-                                    <div className="flex flex-col items-end">
-                                      <span>{formatCurrency(ex.amount)}</span>
-                                      {ex.originalTotal && (
-                                        <span className="text-[9px] text-slate-400 font-medium bg-white/80 px-1.5 py-0.5 rounded shadow-sm mt-1 border border-white">
-                                          Orig: {formatCurrency(ex.originalTotal)}
-                                        </span>
-                                      )}
+                                  <td className="px-6 py-3.5 whitespace-nowrap text-slate-500 font-medium">
+                                    {formatDateBR(ex.date)}
+                                  </td>
+                                  <td className="px-6 py-3.5">
+                                    <div className="font-medium text-slate-900 leading-tight">
+                                      {ex.description}
                                     </div>
+                                    {ex.notes && (
+                                      <div className="text-[11px] text-slate-400 mt-0.5 italic">{ex.notes}</div>
+                                    )}
                                   </td>
-                                  <td className="px-6 py-4 text-center no-print">
-                                    <div className="flex justify-center gap-2 opacity-0 group-hover:opacity-100 transition-all transform translate-y-1 group-hover:translate-y-0">
-                                      <button onClick={() => startEdit(ex)} className="p-1.5 text-slate-400 hover:text-orange-500 bg-white/50 hover:bg-white border border-transparent hover:border-orange-100 rounded-lg transition-all shadow-sm" title="Editar">
-                                        <Edit className="w-4 h-4" />
+                                  <td className="px-6 py-3.5 text-right font-bold text-slate-950 tabular-nums whitespace-nowrap">
+                                    <div>{formatCurrency(ex.amount)}</div>
+                                    {ex.originalTotal && (
+                                      <div className="text-[9px] text-slate-400 font-normal">
+                                        Orig: {formatCurrency(ex.originalTotal)}
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td className="px-6 py-3.5 text-center no-print">
+                                    <div className="flex items-center justify-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                                      <button
+                                        onClick={() => handleEditClick(ex)}
+                                        className="p-1 text-slate-400 hover:text-amber-600 hover:bg-slate-100 rounded transition-all cursor-pointer"
+                                        title="Editar Lançamento"
+                                      >
+                                        <Edit className="w-3.5 h-3.5" />
                                       </button>
-                                      <button onClick={() => setDeleteModal({ open: true, id: ex.id })} className="p-1.5 text-slate-400 hover:text-red-500 bg-white/50 hover:bg-white border border-transparent hover:border-red-100 rounded-lg transition-all shadow-sm" title="Excluir">
-                                        <Trash2 className="w-4 h-4" />
+                                      <button
+                                        onClick={() => handleDeleteClick(ex)}
+                                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all cursor-pointer"
+                                        title="Excluir Lançamento"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
                                       </button>
                                     </div>
                                   </td>
@@ -946,89 +1606,205 @@ const renderAnalyticsView = () => {
                           </table>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+              )}
+            </>
+          )}
+        </div>
+      </main>
 
-      {/* Delete Modal */}
-      {deleteModal.open && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-md p-4 animate-in fade-in no-print">
-          <div className="glass-panel w-full max-w-sm rounded-3xl p-8 text-center shadow-2xl">
-            <div className="mx-auto w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center mb-5 shadow-inner text-red-500">
-              <Trash2 className="w-7 h-7" />
+      {/* Edit Password Confirmation Modal */}
+      {editPasswordModal.open && editPasswordModal.expense && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in no-print"
+          onClick={() => { setEditPasswordModal({ open: false, expense: null }); setEditPasswordInput(''); }}
+        >
+          <div
+            className="bg-white border border-slate-200 w-full max-w-sm rounded-2xl p-6 text-center shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="mx-auto w-12 h-12 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-center mb-4 text-amber-600">
+              <Edit className="w-6 h-6" />
             </div>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Excluir Lançamento</h3>
-            <p className="text-sm text-slate-500 mb-6 font-medium">Digite a senha de administrador para confirmar.</p>
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Confirmar Edição</h3>
+            <p className="text-xs text-slate-600 mb-1 font-bold">
+              {editPasswordModal.expense.description}
+            </p>
+            <p className="text-[11px] text-slate-400 mb-5">
+              Digite a senha de administrador para liberar a edição deste item.
+            </p>
             <input
               type="password"
               autoFocus
               placeholder="Senha"
-              value={passwordInput}
-              onChange={e => setPasswordInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleDeleteConfirm()}
-              className="liquid-input w-full px-5 py-3 rounded-xl text-center font-bold text-slate-700 mb-6 placeholder-slate-300"
+              value={editPasswordInput}
+              onChange={e => setEditPasswordInput(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') confirmEditPassword();
+                if (e.key === 'Escape') { setEditPasswordModal({ open: false, expense: null }); setEditPasswordInput(''); }
+              }}
+              className="liquid-input w-full px-4 py-2.5 rounded-lg text-center font-bold text-slate-900 mb-5 placeholder-slate-400 text-sm"
             />
-            <div className="flex gap-3">
-              <button onClick={() => { setDeleteModal({ open: false, id: null }); setPasswordInput(''); }} className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-all">
+            <div className="flex gap-2.5">
+              <button
+                type="button"
+                onClick={() => { setEditPasswordModal({ open: false, expense: null }); setEditPasswordInput(''); }}
+                className="flex-1 py-2.5 bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-200 transition-all cursor-pointer"
+              >
                 Cancelar
               </button>
-              <button onClick={handleDeleteConfirm} className="flex-1 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow-lg shadow-red-200 transition-all">
-                Excluir
+              <button
+                type="button"
+                onClick={confirmEditPassword}
+                className="flex-1 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer"
+              >
+                Liberar Edição
               </button>
             </div>
           </div>
         </div>
       )}
-      </div>
+
+      {/* Delete 2-Step Modal (Step 1: Confirm -> Step 2: Password) */}
+      {deleteModal.open && deleteModal.expense && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in no-print"
+          onClick={() => { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); }}
+        >
+          <div
+            className="bg-white border border-slate-200 w-full max-w-md rounded-2xl p-6 text-center shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="mx-auto w-12 h-12 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-center mb-4 text-rose-600">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            {deleteModal.step === 'confirm' ? (
+              /* Passo 1: Confirmar intenção de excluir */
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 mb-1">Deseja realmente excluir?</h3>
+                <p className="text-xs text-slate-500 mb-4">
+                  Esta ação removerá o lançamento do banco de dados e registrará o evento na auditoria.
+                </p>
+
+                {/* Detalhes do item a ser excluído */}
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-left mb-6 space-y-1.5 text-xs">
+                  <p><strong className="text-slate-900">Descrição:</strong> {deleteModal.expense.description}</p>
+                  <p><strong className="text-slate-900">Loja / Categoria:</strong> {deleteModal.expense.store} • {deleteModal.expense.category}</p>
+                  <p><strong className="text-slate-900">Data:</strong> {formatDateBR(deleteModal.expense.date)}</p>
+                  <p><strong className="text-slate-900">Valor:</strong> <span className="font-bold text-rose-700">R$ {formatCurrency(deleteModal.expense.amount)}</span></p>
+                </div>
+
+                <div className="flex gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); }}
+                    className="flex-1 py-2.5 bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-200 transition-all cursor-pointer"
+                  >
+                    Não, Manter
+                  </button>
+                  <button
+                    type="button"
+                    onClick={proceedToDeletePassword}
+                    className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg shadow-md shadow-rose-600/20 transition-all cursor-pointer"
+                  >
+                    Sim, Continuar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Passo 2: Solicitar senha de administrador */
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 mb-1">Senha de Confirmação</h3>
+                <p className="text-xs text-slate-500 mb-5">
+                  Digite a senha de administrador para concluir a exclusão de <strong>{deleteModal.expense.description}</strong>.
+                </p>
+                <input
+                  type="password"
+                  autoFocus
+                  placeholder="Senha"
+                  value={deletePasswordInput}
+                  onChange={e => setDeletePasswordInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') confirmDeletePassword();
+                    if (e.key === 'Escape') { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); }
+                  }}
+                  className="liquid-input w-full px-4 py-2.5 rounded-lg text-center font-bold text-slate-900 mb-5 placeholder-slate-400 text-sm"
+                />
+                <div className="flex gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); }}
+                    className="flex-1 py-2.5 bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-200 transition-all cursor-pointer"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={confirmDeletePassword}
+                    className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg shadow-md shadow-rose-600/20 transition-all cursor-pointer"
+                  >
+                    Excluir Definitivamente
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Settings Modal */}
       {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/20 backdrop-blur-md no-print">
-          <div className="glass-panel w-full max-w-sm overflow-hidden flex flex-col max-h-[90vh] rounded-3xl border border-white/80 shadow-2xl">
-            <div className="p-5 border-b border-white/60 flex justify-between items-center bg-white/40">
-              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <div className="p-1.5 bg-blue-100/50 rounded-lg text-blue-600">
-                  <Settings className="w-5 h-5" />
-                </div>
-                Configurações
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs no-print">
+          <div className="bg-white border border-slate-200 w-full max-w-md overflow-hidden flex flex-col rounded-2xl shadow-2xl">
+            <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
+              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2.5">
+                <Settings className="w-5 h-5 text-amber-600" />
+                Configurações do Sistema
               </h3>
-              <button onClick={() => setIsSettingsOpen(false)} className="text-slate-400 hover:text-slate-600 bg-white/50 p-1.5 rounded-lg transition-colors">
+              <button
+                onClick={() => setIsSettingsOpen(false)}
+                className="text-slate-400 hover:text-slate-900 p-1 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-6 space-y-8 overflow-y-auto">
+            <div className="p-6 space-y-6 overflow-y-auto">
               <div className="space-y-3">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Perfil</h4>
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Perfil & Sincronização</h4>
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2">
-                    Nome do Funcionário <span className="text-red-500">*</span>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                    Nome do Funcionário <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={settings.employeeName}
                     onChange={e => setSettings({ ...settings, employeeName: e.target.value })}
-                    className="liquid-input w-full p-3.5 rounded-xl font-medium text-slate-700"
+                    className="liquid-input w-full p-2.5 rounded-lg font-medium text-slate-900 text-sm"
                   />
-                  <p className="text-[10px] text-slate-400 mt-2 ml-1">Este nome é a chave da sua sincronização. Use o mesmo nome em todos os dispositivos.</p>
+                  <p className="text-[11px] text-slate-500 mt-1.5">
+                    Este nome é a chave da sua sincronização. Use o mesmo nome em todos os dispositivos.
+                  </p>
                 </div>
               </div>
-              <div className="space-y-3 pt-4 border-t border-slate-100">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Dados & Backup</h4>
-                <div className="grid grid-cols-1 gap-3">
-                  <button onClick={() => { if (fileInputRef.current) fileInputRef.current.click(); }} className="flex items-center justify-center gap-2 w-full py-3.5 bg-white/60 text-slate-600 hover:text-blue-600 hover:bg-white border border-white rounded-xl transition-all shadow-sm">
-                    <Upload className="w-5 h-5" /> Restaurar Arquivo (PC)
-                  </button>
-                </div>
+              <div className="space-y-3 pt-4 border-t border-slate-200">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Backup Local</h4>
+                <button
+                  onClick={() => { if (fileInputRef.current) fileInputRef.current.click(); }}
+                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition-all cursor-pointer"
+                >
+                  <Upload className="w-4 h-4" /> Restaurar Arquivo do Computador
+                </button>
               </div>
             </div>
-            <div className="p-5 bg-white/30 border-t border-white/60">
-              <button onClick={() => setIsSettingsOpen(false)} className="w-full py-3.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl shadow-lg transition-transform hover:-translate-y-0.5">
-                Concluir
+            <div className="p-4 bg-slate-50 border-t border-slate-200">
+              <button
+                onClick={() => setIsSettingsOpen(false)}
+                className="w-full py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-all cursor-pointer shadow-sm"
+              >
+                Concluir & Salvar
               </button>
             </div>
           </div>
@@ -1037,33 +1813,40 @@ const renderAnalyticsView = () => {
 
       {/* Backup Modal */}
       {showBackupOptions && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/20 backdrop-blur-md p-4 animate-in fade-in zoom-in no-print">
-          <div className="glass-panel w-full max-w-sm overflow-hidden relative rounded-3xl shadow-2xl p-8 text-center">
-            <div className="mx-auto w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center mb-5 shadow-inner text-blue-500">
-              <Save className="w-7 h-7" />
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in no-print">
+          <div className="bg-white border border-slate-200 w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center">
+            <div className="mx-auto w-12 h-12 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-center mb-4 text-amber-600">
+              <Save className="w-6 h-6" />
             </div>
-            <h3 className="text-xl font-bold text-slate-800 mb-2">Salvar Backup</h3>
-            <p className="text-sm text-slate-500 mb-8 font-medium">Onde deseja salvar seus dados?</p>
-            <div className="grid grid-cols-1 gap-3">
-              <button onClick={handleSaveBackup} className="group relative w-full py-4 bg-white/60 border border-white hover:bg-white hover:border-blue-200 text-slate-700 font-bold rounded-xl shadow-sm transition-all flex items-center justify-center gap-3">
-                <div className="p-2 bg-slate-100 rounded-lg group-hover:bg-blue-50 text-slate-500 group-hover:text-blue-500 transition-colors">
-                  <HardDrive className="w-5 h-5" />
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Backup & Segurança</h3>
+            <p className="text-xs text-slate-500 mb-6">Opções de persistência e salvamento dos seus dados</p>
+            <div className="space-y-3">
+              <button
+                onClick={handleSaveBackup}
+                className="w-full py-3 px-4 bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-800 font-semibold rounded-xl transition-all flex items-center justify-between text-xs cursor-pointer shadow-xs"
+              >
+                <div className="flex items-center gap-2.5">
+                  <HardDrive className="w-4 h-4 text-amber-600" />
+                  <span>Baixar Backup no Computador</span>
                 </div>
-                <span className="flex-1 text-left">No Computador</span>
-                <Download className="w-4 h-4 text-slate-400 mr-2" />
+                <Download className="w-3.5 h-3.5 text-slate-400" />
               </button>
-              <div className="flex items-start gap-3 p-4 bg-emerald-50/60 border border-emerald-100 rounded-xl text-left">
-                <div className="p-2 bg-emerald-100 rounded-lg text-emerald-600 shrink-0">
-                  <Cloud className="w-5 h-5" />
-                </div>
+
+              <div className="flex items-start gap-3 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-left">
+                <Cloud className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                 <div>
-                  <p className="text-sm font-bold text-emerald-700">Nuvem — Sync Automático</p>
-                  <p className="text-xs text-emerald-600 mt-0.5">Todos os lançamentos são salvos em tempo real no Firebase. Nenhuma ação manual é necessária.</p>
+                  <p className="text-xs font-bold text-emerald-800">Sincronização em Nuvem Ativa</p>
+                  <p className="text-[11px] text-emerald-700 mt-0.5 leading-snug">
+                    Todos os lançamentos são salvos em tempo real no Firebase.
+                  </p>
                 </div>
               </div>
             </div>
-            <button onClick={() => setShowBackupOptions(false)} className="mt-6 text-slate-400 hover:text-slate-600 text-xs font-bold uppercase tracking-wider">
-              Cancelar
+            <button
+              onClick={() => setShowBackupOptions(false)}
+              className="mt-5 text-slate-400 hover:text-slate-700 text-xs font-semibold uppercase tracking-wider cursor-pointer"
+            >
+              Fechar
             </button>
           </div>
         </div>

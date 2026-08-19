@@ -9,7 +9,6 @@ interface ToastContainerProps {
 
 /** Separa a mensagem em título + detalhe usando o separador ": " */
 function parseMessage(message: string): { title: string; detail?: string } {
-  // Detecta padrão "⚠️ Cota..." ou "Erro ao excluir..." com detalhe após ponto
   const separators = ['\n', '. Tente', '. O item', ': resource-exhausted'];
   for (const sep of separators) {
     const idx = message.indexOf(sep);
@@ -21,7 +20,7 @@ function parseMessage(message: string): { title: string; detail?: string } {
 }
 
 export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, removeToast }) => (
-  <div className="fixed top-4 right-4 z-[60] flex flex-col gap-3 pointer-events-none" style={{ maxWidth: '360px' }}>
+  <div className="fixed top-4 right-4 z-[99999] flex flex-col gap-2.5 pointer-events-none" style={{ maxWidth: '380px' }}>
     {toasts.map(toast => {
       const { title, detail } = parseMessage(toast.message);
       const isError = toast.type === 'error';
@@ -29,17 +28,20 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, removeTo
       return (
         <div
           key={toast.id}
-          className={`pointer-events-auto flex items-start gap-3 px-4 py-3.5 rounded-2xl transition-all duration-300 animate-in slide-in-from-right fade-in shadow-lg border ${isError
-              ? 'bg-[#1A1A1A] text-white border-red-800'
+          className={`pointer-events-auto flex items-start gap-3 px-4 py-3 rounded-xl transition-all duration-300 animate-in slide-in-from-right fade-in shadow-xl border ${
+            isError
+              ? 'bg-white text-rose-900 border-rose-300 shadow-rose-100'
               : isSuccess
-                ? 'bg-[#FDB827] text-[#1A1A1A] border-[#FDB827]'
-                : 'bg-[#7C5CFC] text-white border-[#7C5CFC]'
-            }`}
+                ? 'bg-white text-emerald-900 border-emerald-300 shadow-emerald-100'
+                : 'bg-white text-slate-900 border-slate-200'
+          }`}
         >
           {/* Ícone */}
-          <div className={`p-1.5 rounded-full flex-shrink-0 mt-0.5 ${isError ? 'bg-red-600/30' : 'bg-white/20'}`}>
+          <div className={`p-1.5 rounded-lg flex-shrink-0 mt-0.5 ${
+            isError ? 'bg-rose-100 text-rose-600' : isSuccess ? 'bg-emerald-100 text-emerald-600' : 'bg-amber-100 text-amber-700'
+          }`}>
             {isError ? (
-              <AlertTriangle className="w-4 h-4 text-red-400" />
+              <AlertTriangle className="w-4 h-4" />
             ) : isSuccess ? (
               <Check className="w-4 h-4" />
             ) : (
@@ -49,9 +51,9 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, removeTo
 
           {/* Texto */}
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-sm leading-snug">{title}</p>
+            <p className="font-bold text-xs leading-snug text-slate-900">{title}</p>
             {detail && (
-              <p className={`text-xs mt-1 leading-snug ${isError ? 'text-gray-400' : 'text-current opacity-70'}`}>
+              <p className="text-[11px] mt-0.5 leading-snug text-slate-500 font-medium">
                 {detail}
               </p>
             )}
@@ -60,12 +62,14 @@ export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, removeTo
           {/* Fechar */}
           <button
             onClick={() => removeToast(toast.id)}
-            className="opacity-50 hover:opacity-100 flex-shrink-0 transition-opacity mt-0.5"
+            className="text-slate-400 hover:text-slate-800 flex-shrink-0 transition-opacity p-0.5 rounded hover:bg-slate-100 cursor-pointer"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       );
     })}
   </div>
 );
+
+export default ToastContainer;

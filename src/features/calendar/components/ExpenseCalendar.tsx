@@ -14,48 +14,14 @@ import {
 } from '@/shared/components/icons';
 import type { FixedNotification } from '@/shared/types';
 
-/**
- * Props para o componente ExpenseCalendar
- * @interface ExpenseCalendarProps
- */
 interface ExpenseCalendarProps {
-  /** Lista reativa de pagamentos fixos vinda do Firestore */
   fixedPayments: FixedNotification[];
-  /** Estado dos checkboxes de pagamento (key: 'year-month-description') */
   checkedState: Record<string, boolean>;
-  /** Callback para alternar status de pagamento */
   onToggleCheck: (key: string, status: boolean) => void;
-  /** Callback para exibir notificações toast */
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
-  /** Erro de sincronização com Firebase */
   syncError?: string | null;
 }
 
-/**
- * Componente de Calendário de Pagamentos Fixos
- * 
- * Exibe calendário mensal com dias de vencimento destacados e lista
- * de pagamentos fixos com checkboxes para marcar como pago.
- * 
- * Funcionalidades:
- * - Navegação entre meses
- * - Zoom em 3 níveis
- * - Filtro por dia de vencimento
- * - Confirmação de pagamento com modal
- * - Correção requer senha de admin
- * 
- * @param props - Props do componente
- * @returns Componente de calendário
- * 
- * @example
- * ```tsx
- * <ExpenseCalendar
- *   checkedState={checks}
- *   onToggleCheck={toggleCheck}
- *   showToast={showToast}
- * />
- * ```
- */
 export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
   fixedPayments,
   checkedState,
@@ -63,19 +29,19 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
   showToast,
   syncError
 }) => {
-  // fixedPayments vem do Firestore via prop — reativo a edições/exclusões
   const FIXED_NOTIFICATIONS = fixedPayments;
   const [currentDate, setCurrentDate] = useState(new Date());
   const [zoomLevel, setZoomLevel] = useState(1);
   const [selectedDayFilter, setSelectedDayFilter] = useState<number | null>(() => {
     const today = new Date().getDate();
-    if (today >= 1 && today <= 4) return 27;
+    if (today >= 1 && today <= 4) return 29;
     if (today >= 5 && today <= 9) return 5;
     if (today >= 10 && today <= 14) return 10;
     if (today >= 15 && today <= 19) return 15;
     if (today >= 20 && today <= 24) return 20;
     if (today >= 25 && today <= 26) return 25;
-    return 27;
+    if (today >= 27 && today <= 28) return 27;
+    return 29;
   });
   const [confirmPayModal, setConfirmPayModal] = useState<{ open: boolean; desc: string | null }>({
     open: false,
@@ -145,7 +111,7 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
 
   const getZoomStyles = () => {
     switch (zoomLevel) {
-      case 0: return { height: 'h-16', textSize: 'text-[9px]', padding: 'p-1' };
+      case 0: return { height: 'h-16', textSize: 'text-[9px]', padding: 'p-1.5' };
       case 2: return { height: 'h-40', textSize: 'text-sm', padding: 'p-3' };
       default: return { height: 'h-28 md:h-36', textSize: 'text-[11px]', padding: 'p-2' };
     }
@@ -155,26 +121,30 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
 
   const getDayColorStyles = useCallback((day: number) => {
     switch (day) {
-      case 5: return 'bg-[#EBE7D9] border-gray-200 hover:bg-gray-100';
-      case 10: return 'bg-[#EBE7D9] border-gray-200 hover:bg-gray-100';
-      case 15: return 'bg-[#EBE7D9] border-gray-200 hover:bg-gray-100';
-      case 20: return 'bg-[#EBE7D9] border-gray-200 hover:bg-gray-100';
-      case 25: return 'bg-[#EBE7D9] border-gray-200 hover:bg-gray-100';
-      case 27: return 'bg-[#EBE7D9] border-gray-200 hover:bg-gray-100';
-      default: return 'bg-white border-gray-100 hover:bg-[#EBE7D9]';
+      case 5:
+      case 10:
+      case 15:
+      case 20:
+      case 25:
+      case 27:
+      case 29:
+        return 'bg-amber-50/40 border-amber-200 hover:border-amber-400';
+      default:
+        return 'bg-white border-slate-200/90 hover:border-slate-300 hover:bg-slate-50/50';
     }
   }, []);
 
   const getDueDateBadgeColor = useCallback((day: number, isChecked: boolean) => {
-    if (isChecked) return 'bg-[#EBE7D9] text-gray-400 border-gray-200';
+    if (isChecked) return 'bg-slate-100 text-slate-400 border-slate-200';
     switch (day) {
-      case 5: return 'bg-[#7C5CFC] text-white border-[#7C5CFC]';
-      case 10: return 'bg-[#FDB827] text-[#1A1A1A] border-[#FDB827]';
-      case 15: return 'bg-black text-white border-black';
-      case 20: return 'bg-[#7C5CFC] text-white border-[#7C5CFC]';
-      case 25: return 'bg-[#FDB827] text-[#1A1A1A] border-[#FDB827]';
-      case 27: return 'bg-black text-white border-black';
-      default: return 'bg-[#EBE7D9] text-[#1A1A1A] border-gray-200';
+      case 5: return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 10: return 'bg-amber-50 text-amber-700 border-amber-200';
+      case 15: return 'bg-cyan-50 text-cyan-700 border-cyan-200';
+      case 20: return 'bg-purple-50 text-purple-700 border-purple-200';
+      case 25: return 'bg-amber-50 text-amber-700 border-amber-200';
+      case 27: return 'bg-cyan-50 text-cyan-700 border-cyan-200';
+      case 29: return 'bg-purple-50 text-purple-700 border-purple-200';
+      default: return 'bg-slate-100 text-slate-700 border-slate-200';
     }
   }, []);
 
@@ -183,38 +153,46 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
   }, [FIXED_NOTIFICATIONS]);
 
   const getFilterButtonClass = (day: number, isSelected: boolean) => {
-    const baseClass = "px-4 py-2 text-xs font-bold rounded-xl transition-all flex items-center gap-1";
-    if (!isSelected) return `${baseClass} bg-white text-gray-400 hover:text-[#1A1A1A] hover:bg-[#EBE7D9]`;
-    return `${baseClass} bg-black text-white`;
+    const baseClass = "px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1 cursor-pointer";
+    if (!isSelected) return `${baseClass} bg-white text-slate-600 border border-slate-200 hover:text-slate-900 hover:bg-slate-50 shadow-xs`;
+    return `${baseClass} bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 font-bold border border-amber-500 shadow-sm`;
   };
 
   const filteredNotifications = useMemo(() => {
-    return FIXED_NOTIFICATIONS
+    const list = FIXED_NOTIFICATIONS
       .filter(item => !item.months || item.months.includes(month + 1))
       .filter(item => selectedDayFilter === null || item.day === selectedDayFilter);
+
+    const seen = new Set<string>();
+    return list.filter(item => {
+      const key = `${item.day}|${item.description.trim().toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }, [FIXED_NOTIFICATIONS, month, selectedDayFilter]);
 
   return (
-    <div className="bg-white rounded-[40px] p-8 overflow-hidden fade-in flex flex-col relative border border-gray-100">
+    <div className="bg-white rounded-2xl overflow-hidden fade-in flex flex-col relative border border-slate-200/90 shadow-sm">
       {/* Modal Confirmar Pagamento */}
       {confirmPayModal.open && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white w-full max-w-sm rounded-[32px] p-8 text-center">
-            <div className="mx-auto w-14 h-14 bg-[#FDB827] rounded-2xl flex items-center justify-center mb-5">
-              <Check className="w-7 h-7 text-[#1A1A1A]" />
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white border border-slate-200 w-full max-w-sm rounded-2xl p-6 text-center shadow-2xl">
+            <div className="mx-auto w-12 h-12 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-center mb-4 text-amber-600">
+              <Check className="w-6 h-6" />
             </div>
-            <h3 className="text-xl font-bold text-[#1A1A1A] mb-2 tracking-tight">Confirmar Pagamento?</h3>
-            <p className="text-sm text-gray-400 mb-8 font-medium">{confirmPayModal.desc}</p>
-            <div className="flex gap-3">
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Confirmar Pagamento?</h3>
+            <p className="text-xs text-slate-500 mb-6 font-medium">{confirmPayModal.desc}</p>
+            <div className="flex gap-2.5">
               <button
                 onClick={() => setConfirmPayModal({ open: false, desc: null })}
-                className="flex-1 py-3 bg-[#EBE7D9] text-[#1A1A1A] font-bold rounded-xl hover:bg-gray-200 transition-all"
+                className="flex-1 py-2.5 bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-200 transition-all cursor-pointer"
               >
                 Não
               </button>
               <button
                 onClick={confirmPayment}
-                className="flex-1 py-3 bg-black text-white rounded-xl font-bold"
+                className="flex-1 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-bold rounded-lg transition-all cursor-pointer shadow-xs"
               >
                 Sim, Pago
               </button>
@@ -225,31 +203,31 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
 
       {/* Modal Corrigir */}
       {fixModal.open && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white w-full max-w-xs p-8 text-center rounded-[32px]">
-            <div className="mx-auto w-14 h-14 bg-[#EBE7D9] rounded-2xl flex items-center justify-center mb-5">
-              <RotateCcw className="w-7 h-7 text-[#1A1A1A]" />
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white border border-slate-200 w-full max-w-sm p-6 text-center rounded-2xl shadow-2xl">
+            <div className="mx-auto w-12 h-12 bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-center mb-4 text-amber-600">
+              <RotateCcw className="w-6 h-6" />
             </div>
-            <h3 className="text-xl font-bold text-[#1A1A1A] mb-2 tracking-tight">Corrigir Status</h3>
-            <p className="text-sm text-gray-400 mb-6">Digite a senha de administrador.</p>
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Corrigir Status</h3>
+            <p className="text-xs text-slate-500 mb-5">Digite a senha de administrador.</p>
             <input
               type="password"
               autoFocus
               placeholder="Senha"
               value={fixPassword}
               onChange={e => setFixPassword(e.target.value)}
-              className="liquid-input w-full px-5 py-3 rounded-xl text-center font-bold text-[#1A1A1A] mb-6 placeholder-gray-300"
+              className="liquid-input w-full px-4 py-2.5 rounded-lg text-center font-bold text-slate-900 mb-5 placeholder-slate-400 text-sm"
             />
-            <div className="flex gap-3">
+            <div className="flex gap-2.5">
               <button
                 onClick={() => setFixModal({ open: false, desc: null })}
-                className="flex-1 py-3 bg-[#EBE7D9] text-[#1A1A1A] font-bold rounded-xl hover:bg-gray-200 transition-all"
+                className="flex-1 py-2.5 bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-200 transition-all cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 onClick={confirmFix}
-                className="flex-1 py-3 bg-[#FDB827] hover:bg-[#E5A71F] text-[#1A1A1A] font-bold rounded-xl transition-all"
+                className="flex-1 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-bold rounded-lg transition-all cursor-pointer shadow-xs"
               >
                 Corrigir
               </button>
@@ -258,236 +236,238 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-6">
-        <div className="flex items-center gap-4">
-          <div className="flex bg-[#EBE7D9] rounded-2xl p-1 gap-1">
+      {/* Header do Calendário */}
+      <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex bg-white rounded-lg p-1 border border-slate-200 gap-1 shadow-xs">
             <button
               onClick={handlePrevMonth}
-              className="p-2 rounded-xl text-gray-400 hover:text-[#1A1A1A] hover:bg-white transition-all"
+              className="p-1.5 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all cursor-pointer"
             >
-              <ChevronLeft className="w-5 h-5"/>
+              <ChevronLeft className="w-4 h-4"/>
             </button>
             <button
               onClick={handleToday}
-              className="px-4 text-xs font-bold text-gray-500 hover:text-[#1A1A1A] hover:bg-white rounded-xl transition-all uppercase tracking-wider"
+              className="px-3 text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-100 rounded transition-all uppercase tracking-wider cursor-pointer"
             >
               Hoje
             </button>
             <button
               onClick={handleNextMonth}
-              className="p-2 rounded-xl text-gray-400 hover:text-[#1A1A1A] hover:bg-white transition-all"
+              className="p-1.5 rounded text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-all cursor-pointer"
             >
-              <ChevronRight className="w-5 h-5"/>
+              <ChevronRight className="w-4 h-4"/>
             </button>
           </div>
-          <h2 className="text-2xl font-bold tracking-tight text-[#1A1A1A]">
-            {monthNames[month]} <span className="opacity-40 font-light">{year}</span>
-          </h2>
+          <h3 className="text-base font-bold tracking-tight text-slate-900">
+            {monthNames[month]} <span className="text-slate-400 font-normal text-sm">{year}</span>
+          </h3>
         </div>
-        <div className="flex items-center gap-2 bg-[#EBE7D9] p-1 rounded-2xl">
+        <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-slate-200 shadow-xs">
           <button
             onClick={() => setZoomLevel(prev => Math.max(0, prev - 1))}
             disabled={zoomLevel === 0}
-            className={`p-2 rounded-xl transition-all ${zoomLevel === 0 ? 'opacity-30 cursor-not-allowed' : 'text-gray-400 hover:text-[#1A1A1A] hover:bg-white'}`}
+            className={`p-1.5 rounded transition-all cursor-pointer ${zoomLevel === 0 ? 'opacity-30 cursor-not-allowed' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}
           >
             <ZoomOut className="w-4 h-4" />
           </button>
           <button
             onClick={() => setZoomLevel(prev => Math.min(2, prev + 1))}
             disabled={zoomLevel === 2}
-            className={`p-2 rounded-lg transition-all ${zoomLevel === 2 ? 'opacity-30 cursor-not-allowed' : 'text-slate-500 hover:text-blue-600 hover:bg-white/50'}`}
+            className={`p-1.5 rounded transition-all cursor-pointer ${zoomLevel === 2 ? 'opacity-30 cursor-not-allowed' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'}`}
           >
             <ZoomIn className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Alerta de Sincronização */}
-      {syncError && (
-        <div className="mb-6 bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
-          <div className="flex-shrink-0 w-5 h-5 bg-amber-400 rounded-full flex items-center justify-center mt-0.5">
-            <span className="text-white text-xs font-bold">!</span>
-          </div>
-          <div className="flex-1">
-            <p className="text-sm font-semibold text-amber-800 mb-1">Aviso de Sincronização</p>
-            <p className="text-xs text-amber-700">{syncError}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Grid do Calendário */}
-      <div className="p-1">
-        <div className="grid grid-cols-7 mb-4">
-          {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map(d => (
-            <div key={d} className="text-center text-xs font-bold text-slate-400 uppercase tracking-widest">
-              {d}
+      <div className="p-6 sm:p-8 space-y-6">
+        {/* Alerta de Sincronização */}
+        {syncError && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+            <div className="flex-shrink-0 w-5 h-5 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center text-xs font-bold">
+              !
             </div>
-          ))}
-        </div>
+            <div className="flex-1">
+              <p className="text-xs font-bold text-amber-800 mb-0.5">Aviso de Sincronização</p>
+              <p className="text-xs text-amber-700">{syncError}</p>
+            </div>
+          </div>
+        )}
 
-        <div className="grid grid-cols-7 gap-3">
-          {Array.from({ length: firstDay }).map((_, i) => (
-            <div key={`empty-${i}`}></div>
-          ))}
-          {Array.from({ length: daysInMonth }).map((_, i) => {
-            const day = i + 1;
-            const isToday = day === new Date().getDate() && 
-                           month === new Date().getMonth() && 
-                           year === new Date().getFullYear();
-            const hasNotification = FIXED_NOTIFICATIONS.some(
-              n => n.day === day && (!n.months || n.months.includes(month + 1))
-            );
+        {/* Grid do Calendário */}
+        <div>
+          <div className="grid grid-cols-7 mb-3">
+            {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map(d => (
+              <div key={d} className="text-center text-xs font-bold text-slate-400 uppercase tracking-wider py-1">
+                {d}
+              </div>
+            ))}
+          </div>
 
-            return (
-              <div
-                key={day}
-                className={`rounded-2xl border transition-all duration-300 backdrop-blur-sm ${zoomStyles.height} ${zoomStyles.padding} flex flex-col relative group overflow-hidden ${
-                  isToday
-                    ? 'bg-white/80 border-blue-300 shadow-liquid-glow ring-2 ring-blue-100'
-                    : getDayColorStyles(day)
-                }`}
-              >
-                <div className="flex justify-between items-start mb-1">
-                  <span
-                    className={`w-8 h-8 flex items-center justify-center rounded-xl text-sm font-bold transition-all ${
-                      isToday
-                        ? 'bg-gradient-to-br from-blue-500 to-cyan-500 text-white shadow-md'
-                        : 'text-slate-500 bg-white/50 shadow-sm'
-                    }`}
-                  >
-                    {day}
-                  </span>
+          <div className="grid grid-cols-7 gap-2">
+            {Array.from({ length: firstDay }).map((_, i) => (
+              <div key={`empty-${i}`}></div>
+            ))}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const isToday = day === new Date().getDate() && 
+                             month === new Date().getMonth() && 
+                             year === new Date().getFullYear();
+              const hasNotification = FIXED_NOTIFICATIONS.some(
+                n => n.day === day && (!n.months || n.months.includes(month + 1))
+              );
+
+              return (
+                <div
+                  key={day}
+                  className={`rounded-xl border transition-all duration-200 ${zoomStyles.height} ${zoomStyles.padding} flex flex-col relative group overflow-hidden ${
+                    isToday
+                      ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-400/40 shadow-xs'
+                      : getDayColorStyles(day)
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-1">
+                    <span
+                      className={`w-6 h-6 flex items-center justify-center rounded-md text-xs font-bold transition-all ${
+                        isToday
+                          ? 'bg-amber-400 text-slate-950 font-black shadow-xs'
+                          : 'text-slate-600 bg-slate-100'
+                      }`}
+                    >
+                      {day}
+                    </span>
+                    {hasNotification && (
+                      <div className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.8)] animate-pulse"></div>
+                    )}
+                  </div>
                   {hasNotification && (
-                    <div className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)] animate-pulse"></div>
+                    <div className="flex-1 overflow-y-auto space-y-1 mt-1">
+                      {FIXED_NOTIFICATIONS.filter(
+                        n => n.day === day && (!n.months || n.months.includes(month + 1))
+                      ).map((note, idx) => (
+                        <div
+                          key={idx}
+                          className={`bg-slate-100/90 border border-slate-200 text-slate-800 px-1.5 py-0.5 rounded font-medium truncate ${zoomStyles.textSize}`}
+                        >
+                          {note.description}
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
-                {hasNotification && (
-                  <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1 mt-2">
-                    {FIXED_NOTIFICATIONS.filter(
-                      n => n.day === day && (!n.months || n.months.includes(month + 1))
-                    ).map((note, idx) => (
-                      <div
-                        key={idx}
-                        className={`bg-white/50 border border-white/60 text-slate-600 px-2 py-1 rounded-lg font-medium truncate backdrop-blur-md ${zoomStyles.textSize}`}
-                      >
-                        {note.description}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Seção de Pagamentos Fixos */}
-      <div className="mt-8 pt-8 border-t border-slate-200/50">
-        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6 mb-6">
-          <h3 className="font-bold text-slate-700 flex items-center gap-3 text-lg whitespace-nowrap">
-            <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg shadow-sm text-blue-600">
-              <CheckSquare className="w-5 h-5"/>
-            </div>
-            Pagamentos Fixos de {monthNames[month]}
-          </h3>
-          <div className="flex flex-wrap gap-2 w-full xl:w-auto justify-start xl:justify-end">
-            {uniqueFixedDays.map(day => (
-              <button
-                key={day}
-                onClick={() => setSelectedDayFilter(day === selectedDayFilter ? null : day)}
-                className={getFilterButtonClass(day, selectedDayFilter === day)}
-              >
-                Dia {day}
-              </button>
-            ))}
-            <div className="w-px h-8 bg-slate-300 mx-1 hidden sm:block"></div>
-            <button
-              onClick={() => setSelectedDayFilter(null)}
-              className={`px-4 py-2 text-xs font-bold rounded-xl transition-all border shadow-sm ${
-                selectedDayFilter === null
-                  ? 'bg-slate-700 text-white border-slate-800 ring-2 ring-slate-200'
-                  : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              Todos
-            </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {filteredNotifications.map((item, idx) => {
-            const key = `${year}-${month}-${item.description}`;
-            const isChecked = !!checkedState[key];
-
-            return (
-              <div
-                key={idx}
-                className={`flex items-center gap-4 p-4 rounded-2xl transition-all duration-300 border ${
-                  isChecked
-                    ? 'bg-slate-50/50 border-slate-100 opacity-60 grayscale'
-                    : 'bg-white/40 border-white/60 hover:bg-white/70 hover:shadow-md'
+        {/* Seção de Pagamentos Fixos */}
+        <div className="pt-6 border-t border-slate-200">
+          <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 mb-6">
+            <div>
+              <h4 className="font-bold text-slate-900 flex items-center gap-2.5 text-base">
+                <CheckSquare className="w-5 h-5 text-amber-600"/>
+                Pagamentos Fixos de {monthNames[month]}
+              </h4>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Controle de Vencimentos</p>
+            </div>
+            <div className="flex flex-wrap gap-2 w-full xl:w-auto">
+              {uniqueFixedDays.map(day => (
+                <button
+                  key={day}
+                  onClick={() => setSelectedDayFilter(day === selectedDayFilter ? null : day)}
+                  className={getFilterButtonClass(day, selectedDayFilter === day)}
+                >
+                  Dia {day}
+                </button>
+              ))}
+              <button
+                onClick={() => setSelectedDayFilter(null)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all border cursor-pointer ${
+                  selectedDayFilter === null
+                    ? 'bg-slate-900 text-white border-slate-900 font-bold'
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                 }`}
               >
-                <div 
-                  className="relative flex items-center"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!isChecked) {
-                      initiatePayment(item.description);
-                    }
-                  }}
-                >
-                  <div
-                    className={`w-6 h-6 rounded-lg transition-all cursor-pointer flex items-center justify-center border ${
-                      !isChecked
-                        ? 'border-slate-300 bg-white/80 hover:border-blue-400'
-                        : 'bg-green-500 border-green-500 text-white shadow-liquid-glow'
-                    }`}
-                  >
-                    {isChecked && <Check className="w-3.5 h-3.5" />}
-                  </div>
-                </div>
+                Todos
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {filteredNotifications.map((item, idx) => {
+              const key = `${year}-${month}-${item.description}`;
+              const isChecked = !!checkedState[key];
+
+              return (
                 <div
-                  className="flex-1 cursor-pointer select-none"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (!isChecked) {
-                      initiatePayment(item.description);
-                    }
-                  }}
+                  key={idx}
+                  className={`flex items-center gap-3.5 p-3.5 rounded-xl transition-all duration-200 border ${
+                    isChecked
+                      ? 'bg-slate-50 border-slate-200 opacity-60'
+                      : 'bg-white border-slate-200/90 hover:border-slate-300 shadow-xs'
+                  }`}
                 >
-                  <p className={`font-semibold text-sm ${
-                    isChecked ? "text-slate-400 line-through" : "text-slate-700"
-                  }`}>
-                    {item.description}
-                  </p>
-                  <p className={`text-xs mt-1 font-medium inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${
-                    getDueDateBadgeColor(item.day, isChecked)
-                  }`}>
-                    <Calendar className="w-3 h-3" /> Dia {item.day}
-                  </p>
-                </div>
-                {isChecked && (
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="text-[10px] font-bold text-white bg-green-500/90 px-2 py-1 rounded-lg shadow-sm backdrop-blur-sm">
-                      Pago
-                    </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        initiateFix(item.description);
-                      }}
-                      className="text-[10px] font-bold text-red-400 hover:text-red-500 hover:underline"
+                  <div 
+                    className="relative flex items-center shrink-0"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!isChecked) {
+                        initiatePayment(item.description);
+                      }
+                    }}
+                  >
+                    <div
+                      className={`w-5 h-5 rounded-md transition-all cursor-pointer flex items-center justify-center border ${
+                        !isChecked
+                          ? 'border-slate-300 bg-slate-50 hover:border-amber-500'
+                          : 'bg-emerald-500 border-emerald-500 text-white'
+                      }`}
                     >
-                      Corrigir
-                    </button>
+                      {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                    </div>
                   </div>
-                )}
-              </div>
-            );
-          })}
+                  <div
+                    className="flex-1 min-w-0 cursor-pointer select-none"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!isChecked) {
+                        initiatePayment(item.description);
+                      }
+                    }}
+                  >
+                    <p className={`font-medium text-xs truncate ${
+                      isChecked ? "text-slate-400 line-through" : "text-slate-900 font-semibold"
+                    }`}>
+                      {item.description}
+                    </p>
+                    <span className={`text-[10px] mt-1 font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${
+                      getDueDateBadgeColor(item.day, isChecked)
+                    }`}>
+                      <Calendar className="w-2.5 h-2.5" /> Dia {item.day}
+                    </span>
+                  </div>
+                  {isChecked && (
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        Pago
+                      </span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          initiateFix(item.description);
+                        }}
+                        className="text-[10px] font-semibold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer"
+                      >
+                        Corrigir
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

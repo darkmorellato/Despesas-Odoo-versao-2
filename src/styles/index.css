@@ -2,50 +2,83 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Surface Colors */
+  --bg-main: #f4f5f7;
+  --bg-card: #ffffff;
+  --bg-card-header: #f8fafc;
+  --bg-sidebar: #111215;
+  
+  /* Borders */
+  --border-primary: #e2e8f0;
+  --border-subtle: #f1f5f9;
+  
+  /* Accents */
+  --accent-amber: #f59e0b;
+  --accent-amber-bg: rgba(245, 158, 11, 0.12);
+  --accent-amber-border: rgba(245, 158, 11, 0.35);
+  
+  /* Status Colors */
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #f43f5e;
+  --color-info: #3b82f6;
+
+  /* Text Colors */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  
+  /* Fonts */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+
 @layer base {
   body {
-    @apply antialiased text-slate-800 bg-[#F5F2EA];
+    @apply antialiased text-slate-900 bg-[#f4f5f7];
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
 }
 
-/* Custom glassmorphism and subtle animations */
+/* Custom Surfaces */
 .glass-panel {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+.glass-panel-elevated {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
 }
 
 .glass-panel-dark {
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: #111215;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Custom scrollbar for clean look */
+/* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: #f1f5f9;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.2);
+  background: #cbd5e1;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.4);
+  background: #94a3b8;
 }
 
 /* Custom focus ring */
 .focus-ring {
-  @apply focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2;
+  @apply focus:outline-none focus:ring-2 focus:ring-amber-400 focus:border-amber-400;
 }
 
 /* Calendar grid custom styles */
@@ -54,46 +87,34 @@
   grid-template-columns: repeat(7, minmax(0, 1fr));
 }
 
-/* Liquid UI Custom Classes */
-.liquid-card {
-  background: #ffffff;
-  border-radius: 32px;
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(0, 0, 0, 0.03);
-}
-
-.liquid-card-sm {
-  background: #ffffff;
-  border-radius: 24px;
-  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(0, 0, 0, 0.03);
-}
-
+/* Enterprise Inputs and Buttons */
 .liquid-input {
-  background: #F5F2EA;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 18px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  color: #0f172a;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .liquid-input:focus {
   background: #ffffff;
-  border-color: #000000;
-  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.05);
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
   outline: none;
 }
 
 .liquid-btn-primary {
-  background: #000000;
-  color: #ffffff;
-  border-radius: 20px;
+  background: #FFC915;
+  color: #0a0b0e;
+  font-weight: 700;
+  border-radius: 0.5rem;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .liquid-btn-primary:hover {
-  background: #1A1A1A;
+  background: #fbbf24;
   transform: translateY(-1px);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
 }
 
 .liquid-btn-primary:active {
@@ -101,48 +122,16 @@
 }
 
 .liquid-btn-secondary {
-  background: #EBE7D9;
-  color: #1A1A1A;
-  border-radius: 20px;
+  background: #f8fafc;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .liquid-btn-secondary:hover {
-  background: #DFDAC9;
-}
-
-.liquid-btn-accent {
-  background: #FDB827;
-  color: #1A1A1A;
-  border-radius: 20px;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.liquid-btn-accent:hover {
-  background: #e5a620;
-  transform: translateY(-1px);
-  box-shadow: 0 10px 25px -5px rgba(253, 184, 39, 0.3);
-}
-
-.liquid-btn-3d {
-  background: #ffffff;
-  border-radius: 24px;
-  box-shadow: 0 6px 0 #EBE7D9, 0 12px 20px rgba(0,0,0,0.04);
-  transition: all 0.15s ease;
-}
-
-.liquid-btn-3d:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 0 #EBE7D9, 0 16px 24px rgba(0,0,0,0.06);
-}
-
-.liquid-btn-3d:active {
-  transform: translateY(4px);
-  box-shadow: 0 2px 0 #EBE7D9, 0 6px 10px rgba(0,0,0,0.04);
-}
-
-.rounded-liquid {
-  border-radius: 40px;
+  background: #f1f5f9;
+  color: #0f172a;
 }
 
 @media print {

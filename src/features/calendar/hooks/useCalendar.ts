@@ -4,7 +4,6 @@ import { onSnapshot, setDoc } from 'firebase/firestore';
 import type { User } from 'firebase/auth';
 import type { CalendarCheck, FixedNotification } from '@/shared/types';
 
-
 interface UseCalendarReturn {
   checks: CalendarCheck;
   isLoading: boolean;
@@ -14,6 +13,61 @@ interface UseCalendarReturn {
 }
 
 const LOCAL_STORAGE_KEY = 'odoo_fast_calendar_checks';
+
+const DESCRIPTION_MAP: Record<string, string> = {
+  "Energia Loja Kassouf": "Energia Kassouf",
+  "ENERGIA CPFL LOJA KASSOUF": "Energia Kassouf",
+  "Energia Loja Dom Pedro": "Energia Dom Pedro",
+  "ENERGIA CPFL LOJA DOM PEDRO": "Energia Dom Pedro",
+  "Energia Loja Premium": "Energia Premium",
+  "ENERGIA CPFL LOJA PREMIUM": "Energia Premium",
+  "Energia Loja Realme": "Energia Realme",
+  "ENERGIA CPFL LOJA REALME": "Energia Realme",
+  "Energia Loja Xv (nova)": "Energia Xv Prime",
+  "Energia Loja Xv (velha)": "Energia Xv Prime",
+  "ENERGIA CPFL LOJA XV VELHA": "Energia Xv Prime",
+  "ENERGIA CPFL XV NOVA": "Energia Xv Prime",
+  "ENERGIA XV NOVA": "Energia Xv Prime",
+  "Energia Miori": "Energia Miori ap 131",
+  "ENERGIA CPFL MIORI - ALUGUEL": "Energia Miori ap 131",
+  "Aluguel Loja Kassouf": "Aluguel Kassouf",
+  "Aluguel Loja Realme": "Aluguel Realme",
+  "Aluguel Loja Dom Pedro": "Aluguel Dom Pedro",
+  "Aluguel Loja Xv (nova)": "Aluguel Xv Prime",
+  "Aluguel Loja Xv (velha)": "Aluguel Xv Prime",
+  "ALUGUEL LOJA XV NOVA": "Aluguel Xv Prime",
+  "ALUGUEL LOJA XV VELHA": "Aluguel Xv Prime",
+  "Aluguel AP. MIORI": "Aluguel Miori ap 131",
+  "Aluguel Miori": "Aluguel Miori ap 131",
+  "Semae Loja Dom Pedro": "Semae Dom Pedro",
+  "ÁGUA SEMAE LOJA DOM PEDRO": "Semae Dom Pedro",
+  "Semae Loja Xv (Nova)": "Semae Xv Prime",
+  "ÁGUA SEMAE LOJA XV NOVA": "Semae Xv Prime",
+  "Internet Loja Dom Pedro": "Internet Dom Pedro Claro",
+  "INTERNET LOJA DOM PEDRO - CLARO": "Internet Dom Pedro Claro",
+  "Internet Xv (nova)": "Internet Xv Prime",
+  "Internet Xv (velha)": "Internet Xv Prime",
+  "INTERNET LOJA XV NOVA - CLARO": "Internet Xv Prime",
+  "Internet Loja Kassouf": "Internet Kassouf",
+  "INTERNET LOJA KASSOUF - CLARO": "Internet Kassouf",
+  "Internet Loja Premium": "Internet Premium",
+  "INTERNET LOJA PREMIUM - VIVO": "Internet Premium",
+  "Internet Loja Realme": "Internet Realme",
+  "INTERNET LOJA REALME - CLARO": "Internet Realme",
+  "Condominio Loja Kassouf": "Condominio Kassouf",
+  "Condominio Miori": "Condominio Miori ap 131",
+  "CONDOMINIO MIORI - CASA JAQUE": "Condominio Miori ap 131",
+  "Marketing Comercio Central": "Comercio Central",
+  "COMÉRCIO CENTRAL": "Comercio Central",
+  "Mesalidade Odoo": "Mensalidade Odoo",
+  "MENSALIDADE ODOO": "Mensalidade Odoo",
+  "IPTU Loja Dom Pedro": "IPTU Dom Pedro",
+  "Recebeimento Aluguel Americana": "Recebimento Aluguel Americana"
+};
+
+export const normalizeTaskDescription = (desc: string): string => {
+  return DESCRIPTION_MAP[desc] || desc;
+};
 
 const saveToLocalStorage = (checks: CalendarCheck) => {
   try {
@@ -38,10 +92,8 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
   const [isLoading, setIsLoading] = useState(true);
   const [syncError, setSyncError] = useState<string | null>(null);
 
-  // useMemo garante que as refs não são recriadas a cada render
   const firebaseRefs = useMemo(() => getFirebaseRefs(), []);
 
-  // Listener de leitura: recebe dados do Firebase e atualiza local
   useEffect(() => {
     if (!user) {
       setIsLoading(false);
@@ -57,12 +109,10 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
           const data = docSnap.data() as { checks?: CalendarCheck };
           const firebaseChecks = data.checks || {};
 
-          // Firebase é a fonte da verdade — substituir estado local
           setChecks(firebaseChecks);
           saveToLocalStorage(firebaseChecks);
           console.log('📥 Calendário: Dados sincronizados do Firebase —', Object.keys(firebaseChecks).length, 'checks');
         } else {
-          // Documento não existe no Firebase ainda — sem dados
           setChecks({});
           console.log('📋 Calendário: Nenhum dado no Firebase ainda');
         }
@@ -83,12 +133,7 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
     return () => unsubscribe();
   }, [user, firebaseRefs.checksRef]);
 
-  /**
-   * Marca/desmarca um pagamento E salva imediatamente no Firebase.
-   * A sincronização é direta: local → Firebase → onSnapshot atualiza todos os clientes.
-   */
   const toggleCheck = useCallback(async (key: string, status: boolean) => {
-    // Atualizar estado local imediatamente para UI responsiva
     const newChecks = { ...checks, [key]: status };
     setChecks(newChecks);
     saveToLocalStorage(newChecks);
@@ -105,7 +150,6 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       console.error('❌ Calendário: Erro ao salvar no Firebase:', err);
-      // Reverte o estado local para evitar inconsistência com o servidor
       setChecks(checks);
       saveToLocalStorage(checks);
       if (errorMsg.includes('quota') || errorMsg.includes('resource-exhausted') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
@@ -116,7 +160,6 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
     }
   }, [checks, user, firebaseRefs.checksRef]);
 
-
   const getPendingPayments = useCallback((payments: FixedNotification[]) => {
     const now = new Date();
     const currentDay = now.getDate();
@@ -126,7 +169,8 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
     return payments.filter(task => {
       if (task.months && !task.months.includes(currentMonth + 1)) return false;
       if (task.day > currentDay) return false;
-      const key = `${currentYear}-${currentMonth}-${task.description}`;
+      const normalizedDesc = normalizeTaskDescription(task.description);
+      const key = `${currentYear}-${currentMonth}-${normalizedDesc}`;
       return !checks[key];
     });
   }, [checks]);

@@ -1,0 +1,986 @@
+{
+  "timestamp": "2026-08-19T20:32:25.127Z",
+  "fixedPaymentsCount": 53,
+  "fixedPayments": [
+    {
+      "id": "default_16",
+      "day": 10,
+      "description": "ENERGIA CPFL LOJA REALME",
+      "updatedAt": {
+        "seconds": 1775752079,
+        "nanoseconds": 372000000
+      }
+    },
+    {
+      "id": "default_22",
+      "day": 10,
+      "updatedAt": {
+        "seconds": 1781105671,
+        "nanoseconds": 286000000
+      },
+      "description": "INTERNET MIORI - CLARO - DÉB. AUT."
+    },
+    {
+      "id": "2z9DLhjJJvp8Bw4oErMY",
+      "createdAt": {
+        "seconds": 1778248380,
+        "nanoseconds": 391000000
+      },
+      "description": "CONDOMINIO MIORI - CASA JAQUE (NOVO)",
+      "day": 10,
+      "updatedAt": {
+        "seconds": 1787169621,
+        "nanoseconds": 797000000
+      },
+      "months": [
+        1,
+        9,
+        2,
+        10,
+        3,
+        11,
+        4,
+        12,
+        8,
+        6,
+        7,
+        5
+      ]
+    },
+    {
+      "id": "default_43",
+      "updatedAt": {
+        "seconds": 1775753587,
+        "nanoseconds": 938000000
+      },
+      "description": "MENSALIDADE DR. EDIBERTO - ADVOGADO",
+      "day": 20
+    },
+    {
+      "id": "default_15",
+      "description": "ENERGIA CPFL LOJA PREMIUM",
+      "updatedAt": {
+        "seconds": 1775752229,
+        "nanoseconds": 622000000
+      },
+      "day": 10
+    },
+    {
+      "id": "4zPopbP34CiaPz6qoSJk",
+      "createdAt": {
+        "seconds": 1775748396,
+        "nanoseconds": 705000000
+      },
+      "day": 10,
+      "description": "INTERNET LOJA DOM PEDRO - VIVO",
+      "updatedAt": {
+        "seconds": 1775752285,
+        "nanoseconds": 552000000
+      }
+    },
+    {
+      "id": "default_37",
+      "updatedAt": {
+        "seconds": 1775753618,
+        "nanoseconds": 648000000
+      },
+      "day": 20,
+      "description": "MENSALIDADE ACIPI FILIPE"
+    },
+    {
+      "id": "default_1",
+      "day": 5,
+      "description": "COLORADO CONTABILIDADE",
+      "updatedAt": {
+        "seconds": 1784140434,
+        "nanoseconds": 115000000
+      }
+    },
+    {
+      "id": "default_33",
+      "description": "RECARGA CELULARES CORPORATIVOS",
+      "day": 10,
+      "updatedAt": {
+        "seconds": 1775752312,
+        "nanoseconds": 273000000
+      }
+    },
+    {
+      "id": "80SESF6gzCr4DQx5x2jg",
+      "createdAt": {
+        "seconds": 1787170140,
+        "nanoseconds": 69000000
+      },
+      "day": 10,
+      "description": "ENERGIA XV NOVA"
+    },
+    {
+      "id": "default_14",
+      "day": 10,
+      "updatedAt": {
+        "seconds": 1775752587,
+        "nanoseconds": 880000000
+      },
+      "description": "ENERGIA CPFL LOJA KASSOUF"
+    },
+    {
+      "id": "IHIs8KSziPZEBL0OWfDs",
+      "description": "MENSALIDADE PAYMOBI",
+      "updatedAt": {
+        "seconds": 1778868187,
+        "nanoseconds": 172000000
+      },
+      "months": [
+        1,
+        2,
+        10,
+        9,
+        3,
+        11,
+        4,
+        12,
+        6,
+        8,
+        7,
+        5
+      ],
+      "day": 20,
+      "createdAt": {
+        "seconds": 1776287745,
+        "nanoseconds": 66000000
+      }
+    },
+    {
+      "id": "default_0",
+      "updatedAt": {
+        "seconds": 1775751730,
+        "nanoseconds": 785000000
+      },
+      "description": "ALUGUEL LOJA PREMIUM",
+      "day": 5
+    },
+    {
+      "id": "default_31",
+      "day": 10,
+      "description": "MENSALIDADE ODOO",
+      "updatedAt": {
+        "seconds": 1780671506,
+        "nanoseconds": 360000000
+      }
+    },
+    {
+      "id": "default_25",
+      "description": "INTERNET LOJA XV NOVA - CLARO",
+      "day": 10,
+      "updatedAt": {
+        "seconds": 1775752639,
+        "nanoseconds": 122000000
+      }
+    },
+    {
+      "id": "default_9",
+      "updatedAt": {
+        "seconds": 1775752692,
+        "nanoseconds": 522000000
+      },
+      "description": "ALUGUEL LOJA REALME",
+      "day": 10
+    },
+    {
+      "id": "default_11",
+      "description": "CONDOMINIO LOJA KASSOUF",
+      "updatedAt": {
+        "seconds": 1775752712,
+        "nanoseconds": 112000000
+      },
+      "day": 10
+    },
+    {
+      "id": "default_44",
+      "updatedAt": {
+        "seconds": 1775753794,
+        "nanoseconds": 392000000
+      },
+      "day": 20,
+      "description": "MENSALIDADE HOSTMUNDO"
+    },
+    {
+      "id": "default_51",
+      "description": "MENSALIDADE TIQUE TAQUE",
+      "updatedAt": {
+        "seconds": 1777042639,
+        "nanoseconds": 1000000
+      },
+      "day": 27
+    },
+    {
+      "id": "default_20",
+      "day": 10,
+      "description": "GABRIEL INFLUENCER",
+      "updatedAt": {
+        "seconds": 1775753768,
+        "nanoseconds": 136000000
+      }
+    },
+    {
+      "id": "QMd3GnLXfxQaj4KeLWgX",
+      "updatedAt": {
+        "seconds": 1775751754,
+        "nanoseconds": 491000000
+      },
+      "description": "MENSALIDADE FABRICIO",
+      "day": 5,
+      "createdAt": {
+        "seconds": 1775748349,
+        "nanoseconds": 341000000
+      }
+    },
+    {
+      "id": "SGnEWfB981f7BKDv0I3Z",
+      "createdAt": {
+        "seconds": 1775828938,
+        "nanoseconds": 138000000
+      },
+      "day": 10,
+      "updatedAt": {
+        "seconds": 1775828989,
+        "nanoseconds": 642000000
+      },
+      "description": "INTERNET TIM FAMÍLIA - DÉB. AUT."
+    },
+    {
+      "id": "default_38",
+      "day": 20,
+      "description": "ALUGUEL AP. MIORI",
+      "updatedAt": {
+        "seconds": 1775753812,
+        "nanoseconds": 784000000
+      }
+    },
+    {
+      "id": "default_2",
+      "updatedAt": {
+        "seconds": 1775751777,
+        "nanoseconds": 341000000
+      },
+      "day": 5,
+      "description": "ESCOLA WENDEL"
+    },
+    {
+      "id": "Uc71BJ9mKhtAVkeNeLwN",
+      "description": "ENERGIA CPFL MIORI - AP NOVO (Nº 82)",
+      "createdAt": {
+        "seconds": 1787159442,
+        "nanoseconds": 9000000
+      },
+      "day": 10
+    },
+    {
+      "id": "default_46",
+      "day": 20,
+      "updatedAt": {
+        "seconds": 1775753837,
+        "nanoseconds": 583000000
+      },
+      "description": "PAGAMENTO VALE FUNCIONÁRIOS"
+    },
+    {
+      "id": "default_35",
+      "day": 25,
+      "updatedAt": {
+        "seconds": 1781527376,
+        "nanoseconds": 195000000
+      },
+      "description": "IPTU LOJA DOM PEDRO",
+      "months": [
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ]
+    },
+    {
+      "id": "default_36",
+      "description": "PENSÃO MARINEUSA",
+      "updatedAt": {
+        "seconds": 1775753539,
+        "nanoseconds": 293000000
+      },
+      "day": 15
+    },
+    {
+      "id": "Y0botfd50NaROQ4CBIJ9",
+      "day": 18,
+      "customDate": "2026-05-18",
+      "description": "COMGÁS - DÉB. AUT. VERIFICAR VENCIMENTO",
+      "updatedAt": {
+        "seconds": 1782230423,
+        "nanoseconds": 893000000
+      }
+    },
+    {
+      "id": "Y4anj6fWgiJlL6ODGAtL",
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        7,
+        6,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "createdAt": {
+        "seconds": 1784987153,
+        "nanoseconds": 501000000
+      },
+      "day": 25,
+      "description": "ALUGUEL LOJA DOM PEDRO"
+    },
+    {
+      "id": "ZGiz6mFGWXgAdEoPtnEG",
+      "day": 5,
+      "createdAt": {
+        "seconds": 1775748359,
+        "nanoseconds": 259000000
+      },
+      "updatedAt": {
+        "seconds": 1775751806,
+        "nanoseconds": 523000000
+      },
+      "description": "MATERIAL FABRICIO"
+    },
+    {
+      "id": "default_7",
+      "updatedAt": {
+        "seconds": 1775752535,
+        "nanoseconds": 826000000
+      },
+      "description": "ÁGUA SEMAE LOJA XV NOVA",
+      "day": 5
+    },
+    {
+      "id": "default_6",
+      "day": 5,
+      "description": "ÁGUA SEMAE LOJA DOM PEDRO",
+      "updatedAt": {
+        "seconds": 1775751922,
+        "nanoseconds": 233000000
+      }
+    },
+    {
+      "id": "default_4",
+      "description": "INTERNET LOJA DOM PEDRO - CLARO",
+      "day": 5,
+      "updatedAt": {
+        "seconds": 1775751985,
+        "nanoseconds": 771000000
+      }
+    },
+    {
+      "id": "default_12",
+      "updatedAt": {
+        "seconds": 1781122247,
+        "nanoseconds": 132000000
+      },
+      "day": 10,
+      "description": "CONDOMINIO MIORI - (VELHO)"
+    },
+    {
+      "id": "default_23",
+      "description": "INTERNET LOJA PREMIUM - VIVO",
+      "day": 10,
+      "updatedAt": {
+        "seconds": 1775752917,
+        "nanoseconds": 938000000
+      }
+    },
+    {
+      "id": "default_21",
+      "day": 10,
+      "description": "INTERNET LOJA KASSOUF - CLARO",
+      "updatedAt": {
+        "seconds": 1775752946,
+        "nanoseconds": 22000000
+      }
+    },
+    {
+      "id": "default_8",
+      "day": 10,
+      "updatedAt": {
+        "seconds": 1775753247,
+        "nanoseconds": 367000000
+      },
+      "description": "ALUGUEL LOJA KASSOUF"
+    },
+    {
+      "id": "default_57",
+      "customDate": "2026-04-29",
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        7,
+        6,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "description": "VALE ALIMENTAÇÃO FUNCIONÁRIOS",
+      "day": 29,
+      "updatedAt": {
+        "seconds": 1777469268,
+        "nanoseconds": 246000000
+      }
+    },
+    {
+      "id": "default_39",
+      "updatedAt": {
+        "seconds": 1775753925,
+        "nanoseconds": 804000000
+      },
+      "description": "CARTÃO DE CRÉDITO JAQUE",
+      "day": 20
+    },
+    {
+      "id": "default_5",
+      "updatedAt": {
+        "seconds": 1785602334,
+        "nanoseconds": 689000000
+      },
+      "description": "PAGAMENTO DE SALÁRIO FUNCIONÁRIOS & PRÊMIOS",
+      "day": 5
+    },
+    {
+      "id": "default_53",
+      "description": "VALE TRANSPORTE FUNCIONÁRIOS",
+      "day": 27,
+      "updatedAt": {
+        "seconds": 1777042617,
+        "nanoseconds": 257000000
+      }
+    },
+    {
+      "id": "default_24",
+      "day": 10,
+      "description": "INTERNET LOJA REALME - CLARO",
+      "updatedAt": {
+        "seconds": 1778260191,
+        "nanoseconds": 837000000
+      }
+    },
+    {
+      "id": "default_41",
+      "description": "IMPOSTOS - DARFs - SIMPLES - FGTS",
+      "day": 20,
+      "updatedAt": {
+        "seconds": 1775753957,
+        "nanoseconds": 93000000
+      }
+    },
+    {
+      "id": "default_40",
+      "updatedAt": {
+        "seconds": 1775753989,
+        "nanoseconds": 170000000
+      },
+      "day": 20,
+      "description": "CONSÓRCIO EMBRACON"
+    },
+    {
+      "id": "default_13",
+      "updatedAt": {
+        "seconds": 1775753311,
+        "nanoseconds": 235000000
+      },
+      "description": "ENERGIA CPFL LOJA DOM PEDRO",
+      "day": 10
+    },
+    {
+      "id": "default_19",
+      "updatedAt": {
+        "seconds": 1787159481,
+        "nanoseconds": 886000000
+      },
+      "description": "ENERGIA CPFL MIORI - ALUGUEL (Nº 131)",
+      "day": 10
+    },
+    {
+      "id": "default_49",
+      "day": 25,
+      "description": "ALUGUEL LOJA XV NOVA + IPTU",
+      "updatedAt": {
+        "seconds": 1782395537,
+        "nanoseconds": 464000000
+      }
+    },
+    {
+      "id": "default_27",
+      "day": 10,
+      "description": "COMÉRCIO CENTRAL",
+      "updatedAt": {
+        "seconds": 1775753358,
+        "nanoseconds": 668000000
+      }
+    },
+    {
+      "id": "default_52",
+      "description": "RECEBER ALUGUEL DE AMERICANA",
+      "day": 25,
+      "updatedAt": {
+        "seconds": 1775754201,
+        "nanoseconds": 131000000
+      }
+    },
+    {
+      "id": "default_3",
+      "description": "FACULDADE FILIPE",
+      "day": 5,
+      "updatedAt": {
+        "seconds": 1775752022,
+        "nanoseconds": 536000000
+      }
+    },
+    {
+      "id": "default_42",
+      "updatedAt": {
+        "seconds": 1775754003,
+        "nanoseconds": 485000000
+      },
+      "day": 20,
+      "description": "MEI DARK MORELATO"
+    },
+    {
+      "id": "default_29",
+      "description": "MENSALIDADE ESTACIONAMENTO",
+      "day": 10,
+      "updatedAt": {
+        "seconds": 1775753497,
+        "nanoseconds": 246000000
+      }
+    }
+  ],
+  "checksCount": 406,
+  "checks": {
+    "2026-3-MEI DARK MORELATO": true,
+    "2026-7-COMGÁS - DÉB. AUT. VERIFICAR VENCIMENTO": true,
+    "2026-4-INTERNET LOJA XV NOVA - CLARO": true,
+    "2026-7-ALUGUEL LOJA KASSOUF": true,
+    "2026-4-PAGAMENTO VALE FUNCIONÁRIOS": true,
+    "2026-6-IMPOSTOS - DARFs - SIMPLES - FGTS": true,
+    "2026-1-Pagamento André Segurança": true,
+    "2026-2-Priscila Influencer": true,
+    "2026-7-COLORADO CONTABILIDADE": true,
+    "2026-6-ÁGUA SEMAE XV VELHA": true,
+    "2026-6-MATERIAL FABRICIO": true,
+    "2026-5-MENSALIDADE TIQUE TAQUE": true,
+    "2026-6-VALE ALIMENTAÇÃO FUNCIONÁRIOS": true,
+    "2026-2-Mensalidade Tim Familia - Débito aut.": true,
+    "2026-7-CONDOMINIO LOJA KASSOUF": true,
+    "2026-6-INTERNET MIORI - CLARO - DÉB. AUT.": true,
+    "2026-6-INTERNET LOJA XV VELHA - CLARO - DÉB. AUT.": true,
+    "2026-2-Seguro Mercedes - Débito aut.": true,
+    "2026-4-INTERNET MIORI - CLARO - DÉB. AUT.": true,
+    "2026-5-MENSALIDADE PAYMOBI": true,
+    "2026-6-ENERGIA CPFL LOJA DOM PEDRO": true,
+    "2026-1-Mensalidade Canva": true,
+    "2026-4-MEI DARK MORELATO": true,
+    "2026-4-INTERNET LOJA DOM PEDRO - VIVO": true,
+    "2026-3-IMPOSTOS - DARFs - SIMPLES - FGTS": true,
+    "2026-4-VALE ALIMENTAÇÃO FUNCIONÁRIOS": true,
+    "2026-1-Energia Loja Kassouf": true,
+    "2026-3-ALUGUEL LOJA REALME": true,
+    "2026-2-Mesalidade Odoo": true,
+    "2026-3-PAGAMENTO DE SALÁRIOS": true,
+    "2026-4-ALUGUEL LOJA PREMIUM": true,
+    "2026-4-ALUGUEL LOJA XV VELHA": true,
+    "2026-6-GABRIEL INFLUENCER": true,
+    "2026-6-COMÉRCIO CENTRAL": true,
+    "2026-1-Energia Loja Xv (nova)": true,
+    "2026-1-Internet Kassouf": true,
+    "2026-2-Pagamento André Segurança": true,
+    "2026-2-Aluguel Dom Pedro": true,
+    "2026-2-Internet Miori - Débito aut.": true,
+    "2026-5-PAGAMENTO DE SALÁRIO FUNCIONÁRIOS": true,
+    "2026-4-MENSALIDADE TIQUE TAQUE": true,
+    "2026-4-ESCOLA WENDEL": true,
+    "2026-3-Aluguel Loja Premium": true,
+    "2026-3-ÁGUA SEMAE LOJA DOM PEDRO": true,
+    "2026-3-ENERGIA CPFL XV NOVA": true,
+    "2026-6-PAGAMENTO DE SALÁRIO FUNCIONÁRIOS": true,
+    "2026-4-INTERNET LOJA REALME - CLARO": true,
+    "2026-7-INTERNET LOJA DOM PEDRO - CLARO": true,
+    "2026-1-Mei Dark Morellato": true,
+    "2026-5-MEI DARK MORELATO": true,
+    "2026-2-Mensalidade Advogado Ediberto": true,
+    "2026-5-COMGÁS - DÉB. AUT. VERIFICAR VENCIMENTO": true,
+    "2026-1-Acipi Filipe": true,
+    "2026-2-Energia Miori": true,
+    "2026-5-COMÉRCIO CENTRAL": true,
+    "2026-3-GABRIEL INFLUENCER": true,
+    "2026-4-RECEBER ALUGUEL DE AMERICANA": true,
+    "2026-3-ALUGUEL LOJA DOM PEDRO": true,
+    "2026-3-ENERGIA CPFL MIORI": true,
+    "2026-5-ENERGIA CPFL LOJA REALME": true,
+    "2026-6-VALE TRANSPORTE FUNCIONÁRIOS": true,
+    "2026-4-ALUGUEL LOJA XV NOVA": true,
+    "2026-2-Condominio Miori": true,
+    "2026-5-ÁGUA SEMAE XV VELHA": true,
+    "2026-6-CARTÃO DE CRÉDITO JAQUE": true,
+    "2026-4-ENERGIA CPFL LOJA XV VELHA": true,
+    "2026-3-COLORADO CONTABILIDADE": true,
+    "2026-3-ESCOLA WENDEL": true,
+    "2026-2-Internet Loja Dom Pedro": true,
+    "2026-1-Recebeimento Aluguel Americana": true,
+    "2026-1-Comgás - Débito aut.": true,
+    "2026-3-PRISCILA INFLUENCER - FIXO / COMISSÃO": true,
+    "2026-3-MENSALIDADE TIQUE TAQUE": true,
+    "2026-2-Recebeimento Aluguel Americana": true,
+    "2026-5-GABRIEL INFLUENCER": true,
+    "2026-2-Aluguel Xv (velha)": true,
+    "2026-1-Condominio Miori": true,
+    "2026-2-Aluguel Xv (nova)": true,
+    "2026-1-Escola Wendell": true,
+    "2026-4-INTERNET TIM FAMÍLIA - DÉB. AUT.": true,
+    "2026-4-CONDOMINIO LOJA KASSOUF": true,
+    "2026-1-Internet Miori - Débito aut.": true,
+    "2026-3-ENERGIA CPFL LOJA KASSOUF": true,
+    "2026-4-IPTU DOM PEDRO": true,
+    "2026-5-ALUGUEL LOJA XV NOVA + IPTU": true,
+    "2026-4-MENSALIDADE HOSTMUNDO": true,
+    "2026-6-MENSALIDADE FABRICIO": true,
+    "2026-7-MENSALIDADE ODOO": true,
+    "2026-1-Impostos - Darf - FGTS - Simples": true,
+    "2026-7-MEI DARK MORELATO": true,
+    "2026-6-ENERGIA CPFL XV NOVA (Mês 07 não teve cobrança pois foi o mínimo)": true,
+    "2026-6-ALUGUEL LOJA PREMIUM": true,
+    "2026-5-ALUGUEL LOJA XV VELHA + IPTU": true,
+    "2026-4-MATERIAL FABRICIO": true,
+    "2026-4-ENERGIA CPFL LOJA DOM PEDRO": true,
+    "2026-1-Semae Loja Dom Pedro": true,
+    "2026-2-Aluguel Loja Realme": true,
+    "2026-1-Internet Xv (nova)": true,
+    "2026-6-MENSALIDADE ODOO": true,
+    "2026-4-IPTU LOJA DOM PEDRO - SUSPENSO - VERIFICAR!": true,
+    "2026-5-INTERNET LOJA DOM PEDRO - CLARO": true,
+    "2026-3-Internet Loja Dom Pedro": true,
+    "2026-7-FACULDADE FILIPE": true,
+    "2026-6-COLORADO CONTABILIDADE **PAGAR 2.444,08 descontando já os 5,92)": true,
+    "2026-2-Aluguel Loja Premium": true,
+    "2026-4-MENSALIDADE PAYMOBI": true,
+    "2026-3-MATERIAL FABRICIO": true,
+    "2026-5-INTERNET LOJA XV NOVA - CLARO": true,
+    "2026-7-ENERGIA CPFL LOJA KASSOUF": true,
+    "2026-3-MENSALIDADE FABRICIO": true,
+    "2026-5-ENERGIA CPFL XV NOVA": true,
+    "2026-1-Seguro Ford Ka - Débito aut.": true,
+    "2026-2-Internet Realme - Débito aut.": true,
+    "2026-3-MENSALIDADE DR. EDIBERTO - ADVOGADO": true,
+    "2026-5-INTERNET TIM FAMÍLIA - DÉB. AUT.": true,
+    "2026-6-COLORADO CONTABILIDADE": true,
+    "2026-5-COLORADO CONTABILIDADE (VERIFICAR 6,00 EM ABERTO POR JUROS NA DARE-SP DE FEVEREIRO)": true,
+    "2026-1-Marketing Comercio Central": true,
+    "2026-1-Aluguel Miori": true,
+    "2026-7-MENSALIDADE HOSTMUNDO": true,
+    "2026-3-MENSALIDADE ACIPI FILIPE": true,
+    "2026-2-Acipi Filipe": true,
+    "2026-1-Energia Loja Premium": true,
+    "2026-4-COMÉRCIO CENTRAL": true,
+    "2026-1-Pagamento Vale Funcionários": true,
+    "2026-4-ALUGUEL LOJA DOM PEDRO": true,
+    "2026-5-ALUGUEL AP. MIORI": true,
+    "2026-3-INTERNET MIORI - CLARO - DÉB. AUT.": true,
+    "2026-6-ENERGIA CPFL LOJA XV VELHA": true,
+    "2026-6-PENSÃO MARINEUSA": true,
+    "2026-6-INTERNET TIM FAMÍLIA - DÉB. AUT.": true,
+    "2026-3-Aluguel Loja Kassouf": false,
+    "2026-7-CONDOMINIO MIORI - CASA JAQUE (NOVO)": true,
+    "2026-6-ÁGUA SEMAE LOJA DOM PEDRO": true,
+    "2026-5-ÁGUA SEMAE LOJA XV NOVA": true,
+    "2026-5-CARTÃO DE CRÉDITO JAQUE": true,
+    "2026-6-CONDOMINIO MIORI - CASA JAQUE (NOVO)": true,
+    "2026-6-ESCOLA WENDEL": true,
+    "2026-5-RECARGA CELULARES CORPORATIVOS": true,
+    "2026-5-ACADEMIA WENDEL": true,
+    "2026-7-MENSALIDADE FABRICIO": true,
+    "2026-3-ENERGIA CPFL LOJA DOM PEDRO": true,
+    "2026-5-MENSALIDADE FABRICIO": true,
+    "2026-7-ALUGUEL LOJA PREMIUM": true,
+    "2026-2-Internet Premium": true,
+    "2026-5-IMPOSTOS - DARFs - SIMPLES - FGTS": true,
+    "2026-2-Internet Kassouf": true,
+    "2026-3-ÁGUA SEMAE XV VELHA": true,
+    "2026-6-INTERNET LOJA KASSOUF - CLARO": true,
+    "2026-6-ALUGUEL LOJA REALME": true,
+    "2026-4-MENSALIDADE DR. EDIBERTO - ADVOGADO": true,
+    "2026-6-RECARGA CELULARES CORPORATIVOS": true,
+    "2026-2-Pagamento Vale Funcionários": true,
+    "2026-3-IPTU LOJA DOM PEDRO - SUSPENSO - VERIFICAR!": true,
+    "2026-3-Material Fabricio": true,
+    "2026-3-INTERNET TIM FAMÍLIA - DÉB. AUT.": true,
+    "2026-5-FACULDADE FILIPE": true,
+    "2026-2-Vale Transporte Funcionários": true,
+    "2026-3-Escola Wendell": true,
+    "2026-6-ENERGIA CPFL LOJA REALME": true,
+    "2026-5-INTERNET MIORI - CLARO - DÉB. AUT.": true,
+    "2026-3-INTERNET LOJA XV VELHA - CLARO - DÉB. AUT.": true,
+    "2026-5-MENSALIDADE ESTACIONAMENTO": true,
+    "2026-4-INTERNET LOJA PREMIUM - VIVO": true,
+    "2026-5-PAGAMENTO VALE FUNCIONÁRIOS": true,
+    "2026-3-CONDOMINIO MIORI": true,
+    "2026-1-Internet Premium": true,
+    "2026-5-INTERNET LOJA KASSOUF - CLARO": true,
+    "2026-3-INTERNET LOJA DOM PEDRO - CLARO": true,
+    "2026-2-Energia Loja Realme": true,
+    "2026-3-MENSALIDADE ESTACIONAMENTO": true,
+    "2026-2-Pagamento de Salários": true,
+    "2026-2-Condominio Loja Kassouf": true,
+    "2026-3-ÁGUA SEMAE LOJA XV NOVA": true,
+    "2026-2-Mensalidade Estacionamento": true,
+    "2026-3-FACULDADE FILIPE": true,
+    "2026-2-Faculdade Filipe": true,
+    "2026-7-INTERNET LOJA KASSOUF - CLARO": true,
+    "2026-1-Aluguel Xv (nova)": true,
+    "2026-1-Seguro Mercedes - Débito aut.": true,
+    "2026-2-Mensalidade Tique Taque": true,
+    "2026-3-Contabilidade Colorado": true,
+    "2026-5-PENSÃO MARINEUSA": true,
+    "2026-2-Pensão Marineusa": true,
+    "2026-3-Pagamento de Salários": true,
+    "2026-3-MENSALIDADE HOSTMUNDO": true,
+    "2026-4-PENSÃO MARINEUSA": true,
+    "2026-5-MENSALIDADE DR. EDIBERTO - ADVOGADO": true,
+    "2026-2-Aluguel Miori": true,
+    "2026-5-ENERGIA CPFL LOJA DOM PEDRO": true,
+    "2026-7-ESCOLA WENDEL": true,
+    "2026-3-INTERNET LOJA KASSOUF - CLARO": true,
+    "2026-6-MENSALIDADE TIQUE TAQUE": true,
+    "2026-5-IPTU DOM PEDRO": true,
+    "2026-5-ALUGUEL LOJA REALME": true,
+    "2026-5-CONDOMINIO MIORI - ALUGUEL": true,
+    "2026-1-Aluguel Xv (velha)": true,
+    "2026-7-PENSÃO MARINEUSA": true,
+    "2026-3-INTERNET LOJA XV NOVA - CLARO": true,
+    "2026-6-ENERGIA CPFL MIORI - ALUGUEL": true,
+    "2026-3-CONSÓRCIO EMBRACON": true,
+    "2026-5-CONSÓRCIO EMBRACON": true,
+    "2026-6-CONDOMINIO LOJA KASSOUF": true,
+    "2026-3-Semae Loja Xv (Nova)": true,
+    "2026-5-PRISCILA INFLUENCER - COMISSÃO": true,
+    "2026-3-RECARGA CELULARES CORPORATIVOS": true,
+    "2026-2-Semae Loja Dom Pedro": true,
+    "2026-2-Aluguel Loja Kassouf": true,
+    "2026-2-Cartão de Crédito Jack": true,
+    "2026-7-COMÉRCIO CENTRAL": true,
+    "2026-7-INTERNET LOJA DOM PEDRO - VIVO": true,
+    "2026-2-Internet Xv (nova)": true,
+    "2026-4-IPTU XV NOVA": true,
+    "2026-2-Contabilidade Colorado": true,
+    "2026-5-COLORADO CONTABILIDADE": true,
+    "2026-3-ALUGUEL LOJA PREMIUM": true,
+    "2026-2-Semae Loja Xv (Nova)": true,
+    "2026-4-VALE TRANSPORTE FUNCIONÁRIOS": true,
+    "2026-3-PENSÃO MARINEUSA": true,
+    "2026-3-MENSALIDADE PAYMOBI": true,
+    "2026-3-Semae Loja Dom Pedro": true,
+    "2026-4-ENERGIA CPFL LOJA REALME": true,
+    "2026-2-Mesalidade Odoo complemento": true,
+    "2026-2-Consorcio Embracom": true,
+    "2026-1-Cartão de Crédito Jack": true,
+    "2026-2-Comgás - Débito aut.": true,
+    "2026-4-GABRIEL INFLUENCER": true,
+    "2026-3-RECEBER ALUGUEL DE AMERICANA": true,
+    "2026-1-Aluguel Dom Pedro": true,
+    "2026-2-Energia Loja Xv (velha)": true,
+    "2026-2-Mei Dark Morellato": true,
+    "2026-6-RECEBER ALUGUEL DE AMERICANA": true,
+    "2026-2-Influenciador Gabriel": true,
+    "2026-2-Energia Loja Xv (nova)": true,
+    "2026-3-ENERGIA CPFL LOJA XV VELHA": true,
+    "2026-4-COMGÁS - DÉB. AUT.": true,
+    "2026-2-Mensalidade Hostmundo": true,
+    "2026-7-PAGAMENTO DE SALÁRIO FUNCIONÁRIOS & PRÊMIOS": true,
+    "2026-4-PAGAMENTO DE SALÁRIO FUNCIONÁRIOS": true,
+    "2026-3-Pagamento André Segurança": false,
+    "2026-7-CONDOMINIO MIORI - (VELHO)": true,
+    "2026-6-MENSALIDADE PAYMOBI": true,
+    "2026-3-ALUGUEL LOJA KASSOUF": true,
+    "2026-5-INTERNET LOJA REALME - CLARO": true,
+    "2026-5-INTERNET LOJA DOM PEDRO - VIVO": true,
+    "2026-4-CONDOMINIO MIORI - ALUGUEL": true,
+    "2026-1-Energia Miori": true,
+    "2026-5-MENSALIDADE ACIPI FILIPE": true,
+    "2026-7-INTERNET MIORI - CLARO - DÉB. AUT.": true,
+    "2026-2-IPTU Loja Dom Pedro": true,
+    "2026-1-Recarga Celulares Corporativo": true,
+    "2026-5-MENSALIDADE ODOO": true,
+    "2026-4-RECARGA CELULARES CORPORATIVOS": true,
+    "2026-1-Priscila Influencer": true,
+    "2026-1-Pensão Marineusa": true,
+    "2026-3-ENERGIA CPFL LOJA REALME": true,
+    "2026-2-Escola Wendell": true,
+    "2026-1-Mensalidade Hostmundo": true,
+    "2026-7-ÁGUA SEMAE LOJA XV NOVA": true,
+    "2026-4-PRISCILA INFLUENCER - COMISSÃO": true,
+    "2026-3-PAGAMENTO DE SALÁRIO FUNCIONÁRIOS": true,
+    "2026-1-Semae Loja Xv (Nova)": true,
+    "2026-1-Mensalidade Estacionamento": true,
+    "2026-3-ALUGUEL AP. MIORI": true,
+    "2026-4-ÁGUA SEMAE XV VELHA": true,
+    "2026-4-CARTÃO DE CRÉDITO JAQUE": true,
+    "2026-6-IPTU LOJA DOM PEDRO": true,
+    "2026-7-GABRIEL INFLUENCER": true,
+    "2026-6-INTERNET LOJA REALME - CLARO": true,
+    "2026-3-INTERNET LOJA DOM PEDRO - VIVO": true,
+    "2026-2-Seguro Ford Ka - Débito aut.": true,
+    "2026-1-Semae Xv (velha) - Débito aut.": true,
+    "2026-2-Mensalidade Canva": true,
+    "2026-3-COMGÁS - DÉB. AUT.": true,
+    "2026-4-INTERNET LOJA XV VELHA - CLARO - DÉB. AUT.": true,
+    "2026-4-ALUGUEL LOJA KASSOUF": true,
+    "2026-7-ENERGIA CPFL MIORI - AP NOVO (Nº 82)": true,
+    "2026-4-IMPOSTOS - DARFs - SIMPLES - FGTS": true,
+    "2026-6-MENSALIDADE HOSTMUNDO": true,
+    "2026-4-MENSALIDADE ODOO": true,
+    "2026-1-Mensalidade Tique Taque": true,
+    "2026-6-FACULDADE FILIPE": true,
+    "2026-5-CONDOMINIO LOJA KASSOUF": true,
+    "2026-6-ENERGIA CPFL LOJA KASSOUF": true,
+    "2026-3-Seguro Mercedes - Débito aut.": false,
+    "2026-2-Semae Xv (velha) - Débito aut.": true,
+    "2026-2-Energia Loja Dom Pedro": true,
+    "2026-5-VALE ALIMENTAÇÃO FUNCIONÁRIOS": true,
+    "2026-2-Vale Alimentação Funcionários": true,
+    "2026-1-Contabilidade Colorado": true,
+    "2026-3-CARTÃO DE CRÉDITO JAQUE": true,
+    "2026-6-INTERNET LOJA DOM PEDRO - VIVO": true,
+    "2026-3-Mensalidade Fabricio": true,
+    "2026-7-INTERNET LOJA REALME - CLARO": true,
+    "2026-7-ENERGIA CPFL MIORI - ALUGUEL": true,
+    "2026-5-ALUGUEL LOJA DOM PEDRO": true,
+    "2026-6-ALUGUEL LOJA XV NOVA + IPTU": true,
+    "2026-1-Vale Alimentação Funcionários": true,
+    "2026-3-ENERGIA CPFL LOJA PREMIUM": true,
+    "2026-7-ÁGUA SEMAE LOJA DOM PEDRO": true,
+    "2026-2-Internet Xv (velha) - Débito aut.": true,
+    "2026-7-ALUGUEL LOJA REALME": true,
+    "2026-6-MENSALIDADE ACIPI FILIPE": true,
+    "2026-1-Mensalidade Tim Familia - Débito aut.": true,
+    "2026-1-Mesalidade Odoo": true,
+    "2026-7-ENERGIA CPFL LOJA REALME": true,
+    "2026-3-PAGAMENTO VALE FUNCIONÁRIOS": true,
+    "2026-3-MENSALIDADE ODOO": true,
+    "2026-6-ALUGUEL LOJA KASSOUF": true,
+    "2026-4-MENSALIDADE ESTACIONAMENTO": true,
+    "2026-4-ENERGIA CPFL LOJA KASSOUF": true,
+    "2026-7-RECARGA CELULARES CORPORATIVOS": true,
+    "2026-5-ENERGIA CPFL MIORI - ALUGUEL": true,
+    "2026-2-Impostos - Darf - FGTS - Simples": true,
+    "2026-7-INTERNET LOJA XV NOVA - CLARO": true,
+    "2026-5-INTERNET LOJA PREMIUM - VIVO": true,
+    "2026-5-ALUGUEL LOJA PREMIUM": true,
+    "2026-2-Marketing Comercio Central": true,
+    "2026-4-MENSALIDADE ACIPI FILIPE": true,
+    "2026-7-ENERGIA CPFL LOJA PREMIUM": true,
+    "2026-1-Aluguel Loja Kassouf": true,
+    "2026-4-ÁGUA SEMAE LOJA DOM PEDRO": true,
+    "2026-1-Mensalidade Paymobi": true,
+    "2026-7-ENERGIA CPFL MIORI - ALUGUEL (Nº 131)": true,
+    "2026-6-INTERNET LOJA PREMIUM - VIVO": true,
+    "2026-6-PAGAMENTO VALE FUNCIONÁRIOS": true,
+    "2026-5-ESCOLA WENDEL": true,
+    "2026-1-Aluguel Loja Premium": true,
+    "2026-1-Aluguel Loja Realme": true,
+    "2026-4-MENSALIDADE FABRICIO": true,
+    "2026-1-Energia Loja Dom Pedro": true,
+    "2026-6-ÁGUA SEMAE LOJA XV NOVA": true,
+    "2026-5-COMGÁS - DÉB. AUT.": true,
+    "2026-2-Mensalidade Paymobi": true,
+    "2026-4-ALUGUEL LOJA REALME": true,
+    "2026-4-ENERGIA CPFL MIORI - ALUGUEL": true,
+    "2026-3-CONDOMINIO LOJA KASSOUF": true,
+    "2026-4-ÁGUA SEMAE LOJA XV NOVA": true,
+    "2026-5-ACADEMIA WENDEL R$ 150,00": true,
+    "2026-1-Influenciador Gabriel": true,
+    "2026-3-COMÉRCIO CENTRAL": true,
+    "2026-6-INTERNET LOJA XV NOVA - CLARO": true,
+    "2026-1-Consorcio Embracom": true,
+    "2026-6-ENERGIA CPFL LOJA PREMIUM": true,
+    "2026-1-Internet Loja Dom Pedro": true,
+    "2026-1-Mesalidade Odoo complemento": true,
+    "2026-5-MENSALIDADE HOSTMUNDO": true,
+    "2026-5-ENERGIA CPFL LOJA PREMIUM": true,
+    "2026-4-INTERNET LOJA DOM PEDRO - CLARO": true,
+    "2026-6-MENSALIDADE DR. EDIBERTO - ADVOGADO": true,
+    "2026-3-INTERNET LOJA PREMIUM - VIVO": true,
+    "2026-2-Recarga Celulares Corporativo": true,
+    "2026-5-ÁGUA SEMAE LOJA DOM PEDRO": true,
+    "2026-7-MENSALIDADE ESTACIONAMENTO": true,
+    "2026-1-Mensalidade Advogado Ediberto": true,
+    "2026-5-CONDOMINIO MIORI - (VELHO)": true,
+    "2026-5-ALUGUEL LOJA KASSOUF": true,
+    "2026-5-ENERGIA CPFL LOJA KASSOUF": true,
+    "2026-5-CONDOMINIO MIORI - CASA JAQUE (NOVO)": true,
+    "2026-3-ALUGUEL LOJA XV VELHA": true,
+    "2026-5-INTERNET LOJA XV VELHA - CLARO - DÉB. AUT.": true,
+    "2026-4-CONDOMINIO MIORI - CASA JAQUE": true,
+    "2026-4-FACULDADE FILIPE": true,
+    "2026-7-INTERNET TIM FAMÍLIA - DÉB. AUT.": true,
+    "2026-4-CONSÓRCIO EMBRACON": true,
+    "2026-3-VALE ALIMENTAÇÃO FUNCIONÁRIOS": true,
+    "2026-3-Faculdade Filipe": true,
+    "2026-4-COLORADO CONTABILIDADE": true,
+    "2026-2-Energia Loja Kassouf": true,
+    "2026-3-Vale Alimentação Funcionários": false,
+    "2026-1-Pagamento de Salários": true,
+    "2026-6-COMGÁS - DÉB. AUT. VERIFICAR VENCIMENTO": true,
+    "2026-1-Internet Realme - Débito aut.": true,
+    "2026-6-ALUGUEL AP. MIORI": true,
+    "2026-7-MATERIAL FABRICIO": true,
+    "2026-4-INTERNET LOJA KASSOUF - CLARO": true,
+    "2026-3-ALUGUEL LOJA XV NOVA": true,
+    "2026-6-CONDOMINIO MIORI - (VELHO)": true,
+    "2026-7-ENERGIA XV NOVA": true,
+    "2026-1-Vale Transporte Funcionários": true,
+    "2026-7-INTERNET LOJA PREMIUM - VIVO": true,
+    "2026-5-IPTU LOJA DOM PEDRO": true,
+    "2026-6-MENSALIDADE ESTACIONAMENTO": true,
+    "2026-4-ENERGIA CPFL LOJA PREMIUM": true,
+    "2026-6-INTERNET LOJA DOM PEDRO - CLARO": true,
+    "2026-6-ALUGUEL LOJA DOM PEDRO": true,
+    "2026-1-Energia Loja Xv (velha)": true,
+    "2026-1-Faculdade Filipe": true,
+    "2026-3-INTERNET LOJA REALME - CLARO - DÉB. AUT.": true,
+    "2026-5-ENERGIA CPFL LOJA XV VELHA": true,
+    "2026-5-VALE TRANSPORTE FUNCIONÁRIOS": true,
+    "2026-5-MATERIAL FABRICIO": true,
+    "2026-7-ENERGIA CPFL LOJA DOM PEDRO": true,
+    "2026-5-IPTU XV NOVA": false,
+    "2026-4-ENERGIA CPFL XV NOVA": true,
+    "2026-1-Internet Xv (velha) - Débito aut.": true,
+    "2026-7-ENERGIA CPFL XV NOVA (Mês 07 não teve cobrança pois foi o mínimo)": true,
+    "2026-4-ALUGUEL AP. MIORI": true,
+    "2026-5-RECEBER ALUGUEL DE AMERICANA": true,
+    "2026-2-Energia Loja Premium": true,
+    "2026-1-Condominio Loja Kassouf": true,
+    "2026-6-CONSÓRCIO EMBRACON": true,
+    "2026-3-VALE TRANSPORTE FUNCIONÁRIOS": true,
+    "2026-5-CONDOMINIO MIORI - CASA JAQUE": true,
+    "2026-6-MEI DARK MORELATO": true,
+    "2026-1-Energia Loja Realme": true
+  }
+}

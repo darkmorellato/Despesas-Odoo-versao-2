@@ -10,22 +10,19 @@ export const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
   message = 'Carregando...'
 }) => {
   const containerClasses = fullScreen
-    ? "fixed inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm"
+    ? "fixed inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-xs"
     : "min-h-[300px] w-full flex items-center justify-center p-8";
 
   return (
     <div className={containerClasses} data-testid="loading-spinner">
-      <div className="flex flex-col items-center justify-center space-y-5">
+      <div className="flex flex-col items-center justify-center space-y-4">
         <div className="relative flex items-center justify-center">
-          {/* Anel estático de fundo */}
-          <div className="absolute inset-0 rounded-full border-4 border-blue-50/50"></div>
-          {/* Anel pulsante */}
-          <div className="absolute -inset-3 rounded-full border-[3px] border-blue-100 opacity-50 animate-pulse"></div>
-          {/* Anel giratório principal */}
-          <div className="w-12 h-12 border-4 border-transparent border-t-blue-600 border-r-blue-400 rounded-full animate-spin z-10 shadow-sm"></div>
+          <div className="w-10 h-10 border-2 border-slate-200 border-t-amber-500 rounded-full animate-spin z-10"></div>
         </div>
-        <p className="text-slate-500 font-medium animate-pulse tracking-wide text-sm">{message}</p>
+        <p className="text-slate-600 font-medium tracking-wide text-xs">{message}</p>
       </div>
     </div>
   );
 };
+
+export default LoadingSpinner;

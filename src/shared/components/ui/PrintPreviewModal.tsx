@@ -81,9 +81,9 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   return (
     <div className="fixed inset-0 z-[150] flex flex-col bg-slate-900/75 backdrop-blur-sm overflow-hidden animate-in fade-in print:static print:inset-auto print:bg-white print:p-0 print:m-0 print:overflow-visible">
       {/* Top Fixed Action Bar */}
-      <header className="bg-slate-900 text-white px-6 py-4 flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 shadow-xl shrink-0 no-print z-50">
+      <header className="bg-[#111318] text-white px-6 py-4 flex flex-wrap items-center justify-between gap-4 border-b border-white/10 shadow-2xl shrink-0 no-print z-50">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-amber-400/20 text-amber-400 flex items-center justify-center font-bold">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center font-bold">
             <FileText className="w-5 h-5" />
           </div>
           <div>
@@ -97,34 +97,34 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
         <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={onOpenNewTab}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition-all shadow-sm active:scale-95 cursor-pointer"
             title="Abrir PDF em nova guia com texto 100% copiável"
           >
-            <FileText className="w-4 h-4" /> Nova Guia
+            <FileText className="w-3.5 h-3.5" /> Nova Guia
           </button>
 
           <button
             onClick={onSavePDF}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold transition-all shadow-sm active:scale-95 cursor-pointer"
             title="Salvar como arquivo PDF original"
           >
-            <Download className="w-4 h-4" /> Salvar PDF
+            <Download className="w-3.5 h-3.5" /> Salvar PDF
           </button>
 
           <button
             onClick={onPrintDirect}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-xl text-xs font-bold transition-all shadow-md active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-400 hover:bg-amber-300 text-black rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer"
             title="Imprimir relatório"
           >
-            <Printer className="w-4 h-4" /> Imprimir
+            <Printer className="w-3.5 h-3.5" /> Imprimir
           </button>
 
           <button
             onClick={onClose}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 rounded-lg text-xs font-semibold transition-all cursor-pointer"
             title="Fechar pré-visualização"
           >
-            <X className="w-4 h-4" /> Fechar
+            <X className="w-3.5 h-3.5" /> Fechar
           </button>
         </div>
       </header>

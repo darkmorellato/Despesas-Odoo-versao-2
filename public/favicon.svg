@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <!-- Background Gradient: Rich Vibrant Blue to Purple/Cyan -->
+    <linearGradient id="bgGrad" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#4F46E5"/>
+      <stop offset="45%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#06B6D4"/>
+    </linearGradient>
+
+    <!-- Receipt Card Gradient -->
+    <linearGradient id="receiptGrad" x1="120" y1="80" x2="360" y2="440" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F1F5F9"/>
+    </linearGradient>
+
+    <!-- Receipt Header Badge -->
+    <linearGradient id="headerGrad" x1="140" y1="120" x2="340" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+
+    <!-- Coin Glow & Gradient -->
+    <linearGradient id="coinGrad" x1="280" y1="280" x2="420" y2="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FDE047"/>
+      <stop offset="35%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#D97706"/>
+    </linearGradient>
+
+    <linearGradient id="coinInnerGrad" x1="300" y1="300" x2="400" y2="400" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FEF08A"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+
+    <!-- Growth Badge Gradient -->
+    <linearGradient id="badgeGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+
+    <!-- Filter Shadows -->
+    <filter id="cardShadow" x="-20%" y="-10%" width="140%" height="130%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#0F172A" flood-opacity="0.35"/>
+    </filter>
+
+    <filter id="coinShadow" x="-30%" y="-30%" width="160%" height="160%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#78350F" flood-opacity="0.4"/>
+    </filter>
+
+    <filter id="glowBadge" x="-30%" y="-30%" width="160%" height="160%" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#059669" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- Base Squircle Container -->
+  <rect width="512" height="512" rx="120" fill="url(#bgGrad)"/>
+
+  <!-- Subtle Inner Border Highlight -->
+  <rect x="6" y="6" width="500" height="500" rx="114" stroke="rgba(255, 255, 255, 0.25)" stroke-width="4" fill="none"/>
+
+  <!-- Background Decorative Circles -->
+  <circle cx="430" cy="80" r="100" fill="white" fill-opacity="0.07"/>
+  <circle cx="80" cy="440" r="120" fill="white" fill-opacity="0.05"/>
+
+  <!-- EXPENSE RECEIPT DOCUMENT -->
+  <g filter="url(#cardShadow)">
+    <!-- Main Paper Body with Zig-Zag / Notched Bottom -->
+    <path d="M 140 95
+             C 140 82, 150 72, 164 72
+             L 348 72
+             C 362 72, 372 82, 372 95
+             L 372 385
+             L 349 372
+             L 326 385
+             L 303 372
+             L 280 385
+             L 257 372
+             L 234 385
+             L 211 372
+             L 188 385
+             L 165 372
+             L 140 385
+             Z"
+          fill="url(#receiptGrad)"/>
+
+    <!-- Receipt Header Bar -->
+    <rect x="168" y="105" width="176" height="24" rx="8" fill="url(#headerGrad)"/>
+
+    <!-- Expense Category Row 1: Orange/Amber -->
+    <rect x="168" y="152" width="30" height="18" rx="5" fill="#F59E0B"/>
+    <rect x="208" y="155" width="76" height="12" rx="6" fill="#94A3B8"/>
+    <rect x="306" y="155" width="38" height="12" rx="6" fill="#F59E0B"/>
+
+    <!-- Expense Category Row 2: Emerald Green -->
+    <rect x="168" y="186" width="30" height="18" rx="5" fill="#10B981"/>
+    <rect x="208" y="189" width="60" height="12" rx="6" fill="#94A3B8"/>
+    <rect x="300" y="189" width="44" height="12" rx="6" fill="#10B981"/>
+
+    <!-- Expense Category Row 3: Coral / Rose -->
+    <rect x="168" y="220" width="30" height="18" rx="5" fill="#F43F5E"/>
+    <rect x="208" y="223" width="70" height="12" rx="6" fill="#94A3B8"/>
+    <rect x="296" y="223" width="48" height="12" rx="6" fill="#F43F5E"/>
+
+    <!-- Dotted Divider Line -->
+    <line x1="168" y1="262" x2="344" y2="262" stroke="#CBD5E1" stroke-width="3" stroke-dasharray="6 6" stroke-linecap="round"/>
+
+    <!-- Total Row -->
+    <rect x="168" y="284" width="56" height="14" rx="7" fill="#64748B"/>
+    <rect x="238" y="281" width="45" height="20" rx="6" fill="#6366F1"/>
+
+    <!-- Barcode at bottom of receipt -->
+    <rect x="168" y="325" width="6" height="26" rx="2" fill="#94A3B8"/>
+    <rect x="180" y="325" width="12" height="26" rx="2" fill="#94A3B8"/>
+    <rect x="198" y="325" width="6" height="26" rx="2" fill="#94A3B8"/>
+    <rect x="210" y="325" width="14" height="26" rx="2" fill="#94A3B8"/>
+    <rect x="230" y="325" width="8" height="26" rx="2" fill="#94A3B8"/>
+    <rect x="244" y="325" width="14" height="26" rx="2" fill="#94A3B8"/>
+  </g>
+
+  <!-- FLOATING VIBRANT GOLDEN COIN -->
+  <g filter="url(#coinShadow)">
+    <!-- Outer Coin Edge -->
+    <circle cx="365" cy="355" r="76" fill="url(#coinGrad)"/>
+    <!-- Inner Coin Rim -->
+    <circle cx="365" cy="355" r="64" fill="url(#coinInnerGrad)"/>
+    <circle cx="365" cy="355" r="64" stroke="#FDE047" stroke-width="3" fill="none"/>
+    
+    <!-- Dollar / Currency Symbol $ -->
+    <text x="365" y="380" 
+          font-family="system-ui, -apple-system, sans-serif" 
+          font-size="68" 
+          font-weight="900" 
+          fill="#92400E" 
+          text-anchor="middle"
+          opacity="0.85">$</text>
+  </g>
+
+  <!-- TOP-RIGHT FLOATING STATUS BADGE (Expense Approved / Trend) -->
+  <g filter="url(#glowBadge)">
+    <circle cx="380" cy="120" r="38" fill="url(#badgeGrad)"/>
+    <circle cx="380" cy="120" r="38" stroke="rgba(255,255,255,0.4)" stroke-width="3" fill="none"/>
+    <!-- Checkmark / Sparkle Icon -->
+    <path d="M 368 120 L 376 128 L 394 110" 
+          stroke="#FFFFFF" 
+          stroke-width="5" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" 
+          fill="none"/>
+  </g>
+
+  <!-- Extra Little Sparkles -->
+  <path d="M 120 180 L 125 195 L 140 200 L 125 205 L 120 220 L 115 205 L 100 200 L 115 195 Z" fill="#FDE047" opacity="0.85"/>
+  <circle cx="108" cy="150" r="5" fill="#38BDF8" opacity="0.9"/>
+  <circle cx="425" cy="235" r="6" fill="#F43F5E" opacity="0.9"/>
+</svg>

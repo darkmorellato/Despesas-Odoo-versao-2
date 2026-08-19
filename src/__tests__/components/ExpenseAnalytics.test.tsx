@@ -13,6 +13,7 @@ vi.mock('@/shared/components/icons', () => ({
   Tag: ({ className }: any) => <div className={className} data-testid="tag-icon">Tag</div>,
   Store: ({ className }: any) => <div className={className} data-testid="store-icon">Store</div>,
   BarChart2: () => <div data-testid="bar-chart">Bar</div>,
+  PieChart: () => <div data-testid="pie-chart">Pie</div>,
   ChevronLeft: ({ className, onClick }: any) => (
     <div className={className} onClick={onClick} data-testid="chevron-left">&lt;</div>
   ),
@@ -146,7 +147,7 @@ describe('ExpenseAnalytics', () => {
       render(<ExpenseAnalytics expenses={mockExpenses} currency="R$" />);
 
       const mensalBtn = screen.getByRole('button', { name: 'Mensal' });
-      expect(mensalBtn.className).toContain('bg-black');
+      expect(mensalBtn.className).toContain('bg-white');
     });
 
     it('should switch to yearly mode on click', async () => {

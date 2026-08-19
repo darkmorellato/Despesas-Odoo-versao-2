@@ -11,7 +11,8 @@ function createWindow() {
     minWidth: 980,
     minHeight: 650,
     title: 'Despesas Miplace',
-    backgroundColor: '#F5F2EA',
+    icon: path.join(__dirname, '../public/favicon.svg'),
+    backgroundColor: '#0a0b0e',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
