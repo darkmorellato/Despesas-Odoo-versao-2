@@ -18,8 +18,11 @@ const ExpenseCalendar = lazy(() => import('@/features/calendar/components/Expens
 const ExpenseAnalytics = lazy(() => import('@/features/analytics/components/ExpenseAnalytics').then(m => ({ default: m.ExpenseAnalytics })));
 const FixedPaymentsManager = lazy(() => import('@/features/fixed-payments/components/FixedPaymentsManager').then(m => ({ default: m.FixedPaymentsManager })));
 const AuditManager = lazy(() => import('@/features/audit/components/AuditManager').then(m => ({ default: m.AuditManager })));
+const TodoManager = lazy(() => import('@/features/todo/components/TodoManager').then(m => ({ default: m.TodoManager })));
 
 import {
+  ListTodo,
+
   Plus,
   Edit,
   Trash2,
@@ -668,7 +671,8 @@ export default function App() {
     calendar: "Calendário",
     analytics: "Análise & Métricas",
     payments: "Pagamentos Fixos",
-    audit: "Registros & Auditoria"
+    audit: "Registros & Auditoria",
+    todo: "Tarefas & To-Do"
   };
 
   // Render sort icon in table headers
@@ -822,6 +826,18 @@ export default function App() {
               <span>Pagamentos Fixos</span>
             </button>
 
+            <button
+              onClick={() => { setCurrentView('todo'); setMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
+                currentView === 'todo'
+                  ? 'bg-white/10 text-white font-semibold shadow-sm border border-white/10'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <ListTodo className="w-4 h-4 text-amber-400" />
+              <span>Tarefas & To-Do</span>
+            </button>
+
             {/* Relatorios & Tools */}
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 pt-6 px-3">
               Relatórios & Nuvem
@@ -917,7 +933,7 @@ export default function App() {
         <header className="border-b border-slate-200/90 px-6 sm:px-8 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white sticky top-0 z-20 no-print shadow-xs">
           <div>
             <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 leading-tight">
-              {currentView === 'audit' ? 'Registros de Auditoria' : `Resultados: ${currentPeriodLabel}`}
+              {currentView === 'audit' ? 'Registros de Auditoria' : currentView === 'todo' ? 'Minhas Tarefas To-Do' : `Resultados: ${currentPeriodLabel}`}
             </h2>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -988,6 +1004,14 @@ export default function App() {
           ) : currentView === 'audit' && isDarkAdmin ? (
             <Suspense fallback={<LoadingSpinner />}>
               <AuditManager />
+            </Suspense>
+          ) : currentView === 'todo' ? (
+            <Suspense fallback={<LoadingSpinner />}>
+              <TodoManager
+                employeeName={sessionUser?.name || settings.employeeName}
+                userEmail={sessionUser?.email || ''}
+                showToast={showToast}
+              />
             </Suspense>
           ) : (
             <>

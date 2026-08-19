@@ -222,7 +222,30 @@ export const History: React.FC<IconComponentProps> = (props) => (
   <Icon {...props} path='<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><polyline points="3 3 3 8 8 8"></polyline><polyline points="12 7 12 12 15 15"></polyline>' />
 );
 
+export const ListTodo: React.FC<IconComponentProps> = (props) => (
+  <Icon {...props} path='<rect x="3" y="5" width="6" height="6" rx="1"></rect><path d="m3 17 2 2 4-4"></path><path d="M13 6h8"></path><path d="M13 12h8"></path><path d="M13 18h8"></path>' />
+);
 
+export const Sun: React.FC<IconComponentProps> = (props) => (
+  <Icon {...props} path='<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2"></path><path d="M12 20v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="m17.66 17.66 1.41 1.41"></path><path d="M2 12h2"></path><path d="M20 12h2"></path><path d="m6.34 17.66-1.41 1.41"></path><path d="m19.07 4.93-1.41 1.41"></path>' />
+);
 
+export const Star: React.FC<IconComponentProps> = (props) => (
+  <Icon {...props} path='<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>' />
+);
 
+export const CheckCircle: React.FC<IconComponentProps> = (props) => (
+  <Icon {...props} path='<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline>' />
+);
 
+export const Circle: React.FC<IconComponentProps> = (props) => (
+  <Icon {...props} path='<circle cx="12" cy="12" r="10"></circle>' />
+);
+
+export const Sparkles: React.FC<IconComponentProps> = (props) => (
+  <Icon {...props} path='<path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path><path d="M5 3v4"></path><path d="M19 17v4"></path><path d="M3 5h4"></path><path d="M17 19h4"></path>' />
+);
+
+export const Volume2: React.FC<IconComponentProps> = (props) => (
+  <Icon {...props} path='<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>' />
+);
