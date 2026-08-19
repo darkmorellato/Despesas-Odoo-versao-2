@@ -1,3 +1,5 @@
+export type TodoRepeat = 'none' | 'daily' | 'weekly' | 'monthly';
+
 export interface TodoItem {
   id: string;
   title: string;
@@ -5,6 +7,7 @@ export interface TodoItem {
   important: boolean;
   dueDate?: string | undefined;
   dueTime?: string | undefined;
+  repeat?: TodoRepeat | undefined;
   notes?: string | undefined;
   employeeName: string;
   userEmail: string;

@@ -15,11 +15,12 @@ import {
   Check,
   Search,
   Sparkles,
+  RefreshCw,
   Edit,
   Tag
 } from '@/shared/components/icons';
 import { useTodo } from '../hooks/useTodo';
-import type { TodoFilter, TodoItem } from '../types';
+import type { TodoFilter, TodoItem, TodoRepeat } from '../types';
 import { playNotificationSound, playSynthesizedBeep } from '@/shared/utils/audio';
 
 interface TodoManagerProps {
@@ -38,6 +39,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
   const [newTitle, setNewTitle] = useState('');
   const [newDueDate, setNewDueDate] = useState('');
   const [newDueTime, setNewDueTime] = useState('');
+  const [newRepeat, setNewRepeat] = useState<TodoRepeat>('none');
   const [newImportant, setNewImportant] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -90,12 +92,14 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
       newDueDate || (activeFilter === 'today' ? todayStr : undefined),
       newDueTime || undefined,
       newImportant,
-      ''
+      '',
+      newRepeat
     );
 
     setNewTitle('');
     setNewDueDate('');
     setNewDueTime('');
+    setNewRepeat('none');
     setNewImportant(false);
     showToast('Tarefa adicionada à sua lista!', 'success');
   };
@@ -103,6 +107,19 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
   const handleTestSound = () => {
     playNotificationSound();
     showToast('Som de Bip testado com sucesso! 🔔', 'info');
+  };
+
+  const getRepeatLabel = (repeat?: TodoRepeat) => {
+    switch (repeat) {
+      case 'daily':
+        return 'Diária';
+      case 'weekly':
+        return 'Semanal';
+      case 'monthly':
+        return 'Mensal';
+      default:
+        return null;
+    }
   };
 
   return (
@@ -120,7 +137,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
                 <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" />
               </h2>
               <p className="text-xs text-slate-300 font-medium">
-                Organização executiva em tempo real com alertas sonoros de Bip
+                Tarefas diárias, semanais e mensais recorrentes com Bip sonoro
               </p>
             </div>
           </div>
@@ -264,7 +281,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
                 </button>
               </div>
 
-              {/* Options: Date & Time pickers */}
+              {/* Options: Date, Time & Recurrence pickers */}
               <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-slate-100 text-xs">
                 <div className="flex items-center gap-1.5 text-slate-500">
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -284,6 +301,21 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
                     onChange={(e) => setNewDueTime(e.target.value)}
                     className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-slate-700 font-medium text-xs"
                   />
+                </div>
+
+                {/* Recurrence Selector */}
+                <div className="flex items-center gap-1.5 text-slate-500">
+                  <RefreshCw className="w-3.5 h-3.5 text-amber-500" />
+                  <select
+                    value={newRepeat}
+                    onChange={(e) => setNewRepeat(e.target.value as TodoRepeat)}
+                    className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-slate-700 font-medium text-xs cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-400"
+                  >
+                    <option value="none">Não repetir</option>
+                    <option value="daily">Repetir Diariamente 🔁</option>
+                    <option value="weekly">Repetir Semanalmente 🔁</option>
+                    <option value="monthly">Repetir Mensalmente 🔁</option>
+                  </select>
                 </div>
               </div>
             </form>
@@ -319,112 +351,140 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
               </div>
               <p className="font-bold text-slate-800 text-sm">Nenhuma tarefa encontrada</p>
               <p className="text-xs text-slate-500 mt-1 max-w-sm">
-                Sua lista está limpa! Adicione uma nova tarefa para receber alertas sonoros de Bip.
+                Sua lista está limpa! Adicione uma tarefa diária, semanal ou mensal para receber alertas de Bip.
               </p>
             </div>
           ) : (
             <div className="space-y-2.5">
-              {filteredTodos.map((task) => (
-                <div
-                  key={task.id}
-                  className={`bg-white rounded-2xl border transition-all duration-200 p-4 flex flex-col gap-2 ${
-                    task.completed
-                      ? 'border-slate-200 bg-slate-50/70 opacity-75'
-                      : task.important
-                      ? 'border-amber-300 shadow-sm bg-amber-50/20'
-                      : 'border-slate-200/90 shadow-xs hover:border-slate-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    {/* Checkbox Button with Sound */}
-                    <button
-                      onClick={() => toggleComplete(task.id)}
-                      className={`p-1 rounded-full transition-all cursor-pointer shrink-0 ${
-                        task.completed ? 'text-emerald-500' : 'text-slate-300 hover:text-amber-500'
-                      }`}
-                      title={task.completed ? 'Marcar como pendente' : 'Concluir tarefa (Bip)'}
-                    >
-                      {task.completed ? (
-                        <CheckCircle className="w-5 h-5 text-emerald-600 fill-emerald-100" />
-                      ) : (
-                        <Circle className="w-5 h-5" />
-                      )}
-                    </button>
-
-                    {/* Title */}
-                    <div
-                      className="flex-1 min-w-0 cursor-pointer"
-                      onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
-                    >
-                      <p
-                        className={`text-sm font-semibold truncate ${
-                          task.completed ? 'text-slate-400 line-through' : 'text-slate-900'
+              {filteredTodos.map((task) => {
+                const repeatText = getRepeatLabel(task.repeat);
+                return (
+                  <div
+                    key={task.id}
+                    className={`bg-white rounded-2xl border transition-all duration-200 p-4 flex flex-col gap-2 ${
+                      task.completed
+                        ? 'border-slate-200 bg-slate-50/70 opacity-75'
+                        : task.important
+                        ? 'border-amber-300 shadow-sm bg-amber-50/20'
+                        : 'border-slate-200/90 shadow-xs hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      {/* Checkbox Button with Sound */}
+                      <button
+                        onClick={() => toggleComplete(task.id)}
+                        className={`p-1 rounded-full transition-all cursor-pointer shrink-0 ${
+                          task.completed ? 'text-emerald-500' : 'text-slate-300 hover:text-amber-500'
                         }`}
+                        title={task.completed ? 'Marcar como pendente' : 'Concluir tarefa (Bip + Nova Ocorrência se recorrente)'}
                       >
-                        {task.title}
-                      </p>
-
-                      {/* Badges */}
-                      <div className="flex flex-wrap items-center gap-2 mt-1">
-                        {task.dueDate && (
-                          <span
-                            className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                              task.dueDate === todayStr
-                                ? 'bg-amber-100 text-amber-800 border-amber-300'
-                                : 'bg-slate-100 text-slate-600 border-slate-200'
-                            }`}
-                          >
-                            <Calendar className="w-2.5 h-2.5" />
-                            {task.dueDate} {task.dueTime ? `@ ${task.dueTime}` : ''}
-                          </span>
+                        {task.completed ? (
+                          <CheckCircle className="w-5 h-5 text-emerald-600 fill-emerald-100" />
+                        ) : (
+                          <Circle className="w-5 h-5" />
                         )}
+                      </button>
 
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
-                          <User className="w-2.5 h-2.5 text-slate-400" />
-                          {task.employeeName}
-                        </span>
+                      {/* Title */}
+                      <div
+                        className="flex-1 min-w-0 cursor-pointer"
+                        onClick={() => setExpandedTaskId(expandedTaskId === task.id ? null : task.id)}
+                      >
+                        <p
+                          className={`text-sm font-semibold truncate ${
+                            task.completed ? 'text-slate-400 line-through' : 'text-slate-900'
+                          }`}
+                        >
+                          {task.title}
+                        </p>
+
+                        {/* Badges */}
+                        <div className="flex flex-wrap items-center gap-2 mt-1">
+                          {task.dueDate && (
+                            <span
+                              className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                task.dueDate === todayStr
+                                  ? 'bg-amber-100 text-amber-800 border-amber-300'
+                                  : 'bg-slate-100 text-slate-600 border-slate-200'
+                              }`}
+                            >
+                              <Calendar className="w-2.5 h-2.5" />
+                              {task.dueDate} {task.dueTime ? `@ ${task.dueTime}` : ''}
+                            </span>
+                          )}
+
+                          {repeatText && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-800 border border-cyan-200">
+                              <RefreshCw className="w-2.5 h-2.5 text-cyan-600" />
+                              {repeatText}
+                            </span>
+                          )}
+
+                          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+                            <User className="w-2.5 h-2.5 text-slate-400" />
+                            {task.employeeName}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Star & Actions */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          onClick={() => toggleImportant(task.id)}
+                          className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                            task.important ? 'text-amber-500 bg-amber-50' : 'text-slate-300 hover:text-amber-500'
+                          }`}
+                          title="Alternar prioridade importante"
+                        >
+                          <Star className={`w-4 h-4 ${task.important ? 'fill-amber-400' : ''}`} />
+                        </button>
+
+                        <button
+                          onClick={() => deleteTodo(task.id)}
+                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                          title="Excluir tarefa"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
 
-                    {/* Star & Actions */}
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={() => toggleImportant(task.id)}
-                        className={`p-1.5 rounded-lg transition-all cursor-pointer ${
-                          task.important ? 'text-amber-500 bg-amber-50' : 'text-slate-300 hover:text-amber-500'
-                        }`}
-                        title="Alternar prioridade importante"
-                      >
-                        <Star className={`w-4 h-4 ${task.important ? 'fill-amber-400' : ''}`} />
-                      </button>
+                    {/* Expanded Notes & Recurrence Setting */}
+                    {expandedTaskId === task.id && (
+                      <div className="pt-3 border-t border-slate-100 mt-1 space-y-3 animate-in fade-in">
+                        <div className="flex items-center justify-between gap-4 text-xs">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
+                            Repetição Recorrente
+                          </label>
+                          <select
+                            value={task.repeat || 'none'}
+                            onChange={(e) => updateTodo(task.id, { repeat: e.target.value as TodoRepeat })}
+                            className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-800"
+                          >
+                            <option value="none">Sem repetição</option>
+                            <option value="daily">Diária (Todo dia) 🔁</option>
+                            <option value="weekly">Semanal (Toda semana) 🔁</option>
+                            <option value="monthly">Mensal (Todo mês) 🔁</option>
+                          </select>
+                        </div>
 
-                      <button
-                        onClick={() => deleteTodo(task.id)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
-                        title="Excluir tarefa"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">
+                            Observações & Anotações
+                          </label>
+                          <textarea
+                            rows={2}
+                            placeholder="Adicionar notas adicionais..."
+                            value={task.notes || ''}
+                            onChange={(e) => updateTodo(task.id, { notes: e.target.value })}
+                            className="liquid-input w-full p-2.5 text-xs rounded-xl font-normal text-slate-800"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Expanded Notes Section */}
-                  {expandedTaskId === task.id && (
-                    <div className="pt-3 border-t border-slate-100 mt-1 space-y-2 animate-in fade-in">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">
-                        Observações & Anotações
-                      </label>
-                      <textarea
-                        rows={2}
-                        placeholder="Adicionar notas adicionais..."
-                        value={task.notes || ''}
-                        onChange={(e) => updateTodo(task.id, { notes: e.target.value })}
-                        className="liquid-input w-full p-2.5 text-xs rounded-xl font-normal text-slate-800"
-                      />
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

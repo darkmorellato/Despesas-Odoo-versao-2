@@ -1,9 +1,32 @@
 import { useState, useEffect, useCallback } from 'react';
 import { db } from '@/config/firebase';
 import { collection, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
-import type { TodoItem } from '../types';
+import type { TodoItem, TodoRepeat } from '../types';
 import { getCachedTodos, saveCachedTodos, addTodoDoc, updateTodoDoc, deleteTodoDoc } from '../services/todoService';
 import { playNotificationSound, playSynthesizedBeep } from '@/shared/utils/audio';
+
+const getNextRecurrenceDate = (currentDateStr?: string, repeat?: TodoRepeat): string => {
+  let baseDate = new Date();
+  if (currentDateStr) {
+    const parts = currentDateStr.split('-');
+    if (parts.length === 3) {
+      baseDate = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+    }
+  }
+
+  if (repeat === 'daily') {
+    baseDate.setDate(baseDate.getDate() + 1);
+  } else if (repeat === 'weekly') {
+    baseDate.setDate(baseDate.getDate() + 7);
+  } else if (repeat === 'monthly') {
+    baseDate.setMonth(baseDate.getMonth() + 1);
+  }
+
+  const year = baseDate.getFullYear();
+  const month = String(baseDate.getMonth() + 1).padStart(2, '0');
+  const day = String(baseDate.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 export const useTodo = (employeeName: string, userEmail: string) => {
   const [todos, setTodos] = useState<TodoItem[]>(() => getCachedTodos());
@@ -32,6 +55,7 @@ export const useTodo = (employeeName: string, userEmail: string) => {
               important: !!data.important,
               dueDate: data.dueDate,
               dueTime: data.dueTime,
+              repeat: data.repeat || 'none',
               notes: data.notes,
               employeeName: data.employeeName || 'Funcionário',
               userEmail: data.userEmail || '',
@@ -86,7 +110,14 @@ export const useTodo = (employeeName: string, userEmail: string) => {
   }, [todos, notifiedTasks]);
 
   // Adicionar tarefa
-  const addTodo = useCallback(async (title: string, dueDate?: string, dueTime?: string, important: boolean = false, notes?: string) => {
+  const addTodo = useCallback(async (
+    title: string,
+    dueDate?: string | undefined,
+    dueTime?: string | undefined,
+    important: boolean = false,
+    notes?: string | undefined,
+    repeat: TodoRepeat = 'none'
+  ) => {
     if (!title.trim()) return;
 
     const tempId = `temp_${Date.now()}`;
@@ -97,6 +128,7 @@ export const useTodo = (employeeName: string, userEmail: string) => {
       important,
       dueDate,
       dueTime,
+      repeat,
       notes,
       employeeName,
       userEmail,
@@ -107,7 +139,6 @@ export const useTodo = (employeeName: string, userEmail: string) => {
     setTodos(updated);
     saveCachedTodos(updated);
 
-    // Toca som suave ao criar
     playSynthesizedBeep();
 
     const realId = await addTodoDoc({
@@ -116,6 +147,7 @@ export const useTodo = (employeeName: string, userEmail: string) => {
       important,
       dueDate,
       dueTime,
+      repeat,
       notes,
       employeeName,
       userEmail,
@@ -127,7 +159,7 @@ export const useTodo = (employeeName: string, userEmail: string) => {
     }
   }, [todos, employeeName, userEmail]);
 
-  // Alternar Concluído (com Bip Sonoro!)
+  // Alternar Concluído (com suporte a tarefas recorrentes!)
   const toggleComplete = useCallback(async (id: string) => {
     const target = todos.find((t) => t.id === id);
     if (!target) return;
@@ -135,7 +167,6 @@ export const useTodo = (employeeName: string, userEmail: string) => {
     const nextCompleted = !target.completed;
     const completedAt = nextCompleted ? new Date().toISOString() : undefined;
 
-    // Dispara alerta sonoro de conclusão!
     if (nextCompleted) {
       playNotificationSound();
     } else {
@@ -150,7 +181,20 @@ export const useTodo = (employeeName: string, userEmail: string) => {
     saveCachedTodos(updated);
 
     await updateTodoDoc(id, { completed: nextCompleted, completedAt });
-  }, [todos]);
+
+    // Se for uma tarefa recorrente e foi concluída, gera automaticamente a próxima ocorrência!
+    if (nextCompleted && target.repeat && target.repeat !== 'none') {
+      const nextDueDate = getNextRecurrenceDate(target.dueDate, target.repeat);
+      await addTodo(
+        target.title,
+        nextDueDate,
+        target.dueTime,
+        target.important,
+        target.notes,
+        target.repeat
+      );
+    }
+  }, [todos, addTodo]);
 
   // Alternar Estrela de Importante
   const toggleImportant = useCallback(async (id: string) => {
