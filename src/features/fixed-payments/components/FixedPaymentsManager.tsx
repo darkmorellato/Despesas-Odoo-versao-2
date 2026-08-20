@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useMemo, memo, useRef, useEffect } from 'react';
 import { useFixedPayments } from '@/features/fixed-payments';
 import { useAuth } from '@/shared/hooks';
-import { ADMIN_PASSWORD } from '@/config/constants';
+import { validateAnyAdminPassword } from '@/features/auth';
 import { CheckSquare, Edit, Trash2, Plus, ChevronDown, ChevronRight, X, Check, AlertTriangle, Wifi, WifiOff, Cloud, CloudOff, RefreshCw } from '@/shared/components/icons';
 import type { FixedNotification } from '@/shared/types';
 
@@ -100,7 +100,7 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
   }, []);
 
   const handlePasswordConfirm = useCallback(async () => {
-    if (passwordInput !== ADMIN_PASSWORD) {
+    if (!validateAnyAdminPassword(passwordInput)) {
       showToast('Senha incorreta.', 'error');
       return;
     }
@@ -119,6 +119,21 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
     setPasswordModal({ open: false, type: 'edit', payment: null });
     setPasswordInput('');
   }, [passwordInput, passwordModal, deletePayment, showToast, openEditModal]);
+
+  // Fechar modais com tecla ESC
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (modalOpen) setModalOpen(false);
+        if (passwordModal.open) {
+          setPasswordModal({ open: false, type: 'edit', payment: null });
+          setPasswordInput('');
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [modalOpen, passwordModal.open]);
 
   const handleSave = useCallback(async () => {
     if (!formData.description.trim()) {

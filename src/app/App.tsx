@@ -1,27 +1,31 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, lazy } from 'react';
 import { useAuth, useToast, useBackup } from '@/shared/hooks';
-import { useExpenses, splitExpense, validateAdminPassword } from '@/features/expenses';
+import { useExpenses, splitExpense, validateAdminPassword, detectExpenseGroup, isGroupStore, ExpenseTableRow, ExpenseForm } from '@/features/expenses';
+import { ExpenseSummaryCards } from '@/features/dashboard/components/ExpenseSummaryCards';
 import { useCalendar } from '@/features/calendar/hooks/useCalendar';
 import { useFixedPayments } from '@/features/fixed-payments/hooks/useFixedPayments';
 import { LoginScreen, getStoredUserSession, logoutUser, seedInitialUsersIfNotExist } from '@/features/auth';
 import type { AuthenticatedUser } from '@/features/auth';
 import { logAuditEvent } from '@/features/audit';
+import { getCachedTodos } from '@/features/todo';
 import { STORES_LIST, CATEGORIES_LIST, STORE_IMAGES, STORE_DISPLAY_ORDER } from '@/config/constants';
 import { getTodayLocal, formatDateBR, formatMonthBR, formatCurrency } from '@/shared/utils/formatters';
 import { getStoreColorClass, getStoreBarColor, getStoreOrder } from '@/shared/utils/helpers';
-import { playNotificationSound } from '@/shared/utils/audio';
+import { playCalendarAlertSound, playTodoAlertSound } from '@/shared/utils/audio';
 import { exportVectorPDF, openVectorPDFInNewTab } from '@/shared/utils/pdfExport';
-import { ToastContainer, DateInput, PendingPaymentsAlert, PrintPreviewModal } from '@/shared/components/ui';
+import { ToastContainer, DateInput, PendingPaymentsAlert, PrintPreviewModal, ReceiptModal } from '@/shared/components/ui';
 import { LoadingSpinner } from '@/shared/components/ui/LoadingSpinner';
 
 const ExpenseCalendar = lazy(() => import('@/features/calendar/components/ExpenseCalendar').then(m => ({ default: m.ExpenseCalendar })));
 const ExpenseAnalytics = lazy(() => import('@/features/analytics/components/ExpenseAnalytics').then(m => ({ default: m.ExpenseAnalytics })));
+const MonthlyClosingView = lazy(() => import('@/features/analytics/components/MonthlyClosingView').then(m => ({ default: m.MonthlyClosingView })));
 const FixedPaymentsManager = lazy(() => import('@/features/fixed-payments/components/FixedPaymentsManager').then(m => ({ default: m.FixedPaymentsManager })));
 const AuditManager = lazy(() => import('@/features/audit/components/AuditManager').then(m => ({ default: m.AuditManager })));
 const TodoManager = lazy(() => import('@/features/todo/components/TodoManager').then(m => ({ default: m.TodoManager })));
 
 import {
   ListTodo,
+  FileText,
 
   Plus,
   Edit,
@@ -97,13 +101,19 @@ export default function App() {
   const [currentView, setCurrentView] = useState<ViewMode>('dashboard');
   const [editingId, setEditingId] = useState<string | null>(null);
   const originalExpenseForAudit = useRef<Expense | null>(null);
+  const editingGroupSiblings = useRef<Expense[]>([]);
   
   // Modals for editing and deleting with password verification
   const [editPasswordModal, setEditPasswordModal] = useState<{ open: boolean; expense: Expense | null }>({ open: false, expense: null });
   const [editPasswordInput, setEditPasswordInput] = useState('');
+  const [editReason, setEditReason] = useState('');
   
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; step: 'confirm' | 'password'; expense: Expense | null }>({ open: false, step: 'confirm', expense: null });
   const [deletePasswordInput, setDeletePasswordInput] = useState('');
+  const [deleteReason, setDeleteReason] = useState('');
+
+  // Comprovante visualizer
+  const [viewReceiptExpense, setViewReceiptExpense] = useState<Expense | null>(null);
 
   const [showBackupOptions, setShowBackupOptions] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -123,6 +133,7 @@ export default function App() {
   const [category, setCategory] = useState('');
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
+  const [receiptUrl, setReceiptUrl] = useState<string | undefined>(undefined);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Filter state
@@ -170,7 +181,7 @@ export default function App() {
     }
   }, [sessionUser, settings.employeeName]);
 
-  // Check pending payments
+  // Check pending payments (Calendário - a cada 15 minutos com hey_listen.mp3)
   useEffect(() => {
     if (!sessionUser) return;
     const checkPending = () => {
@@ -178,7 +189,7 @@ export default function App() {
       if (pending.length > 0) {
         setPendingItems(pending);
         setShowReminder(true);
-        playNotificationSound();
+        playCalendarAlertSound();
       } else {
         setShowReminder(false);
         setPendingItems([]);
@@ -186,12 +197,38 @@ export default function App() {
     };
 
     const timer = setTimeout(checkPending, 2000);
-    const interval = setInterval(checkPending, 30 * 60 * 1000);
+    const interval = setInterval(checkPending, 15 * 60 * 1000); // a cada 15 minutos
     return () => {
       clearTimeout(timer);
       clearInterval(interval);
     };
   }, [getPendingPayments, fixedPayments, sessionUser]);
+
+  // Check pending To-Do tasks (Tarefas - a cada 30 minutos com todo.mp3, intercalado aos 5 minutos)
+  useEffect(() => {
+    if (!sessionUser) return;
+
+    const checkPendingTodos = () => {
+      const todayStr = getTodayLocal();
+      const todos = getCachedTodos();
+      const pending = todos.filter(t => !t.completed && (t.dueDate === todayStr || !t.dueDate || t.dueDate < todayStr));
+      if (pending.length > 0) {
+        playTodoAlertSound();
+      }
+    };
+
+    // Inicia aos 5 minutos (para intercalar com o calendário) e depois repete a cada 30 minutos
+    let interval: any;
+    const initialOffsetTimer = setTimeout(() => {
+      checkPendingTodos();
+      interval = setInterval(checkPendingTodos, 30 * 60 * 1000); // a cada 30 minutos
+    }, 5 * 60 * 1000); // 5 minutos de offset para nunca coincidir
+
+    return () => {
+      clearTimeout(initialOffsetTimer);
+      if (interval) clearInterval(interval);
+    };
+  }, [sessionUser]);
 
   // Flashing title for pending payments
   useEffect(() => {
@@ -242,12 +279,14 @@ export default function App() {
     let filtered = expenses;
 
     if (searchTerm) {
-      const lowerSearch = searchTerm.toLowerCase();
+      const normalize = (str: string) => str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const lowerSearch = normalize(searchTerm);
       return filtered.filter(ex =>
-        ex.description.toLowerCase().includes(lowerSearch) ||
-        ex.category.toLowerCase().includes(lowerSearch) ||
-        ex.store.toLowerCase().includes(lowerSearch) ||
-        (ex.notes && ex.notes.toLowerCase().includes(lowerSearch))
+        normalize(ex.description).includes(lowerSearch) ||
+        normalize(ex.category).includes(lowerSearch) ||
+        normalize(ex.store).includes(lowerSearch) ||
+        normalize(ex.employeeName || '').includes(lowerSearch) ||
+        (ex.notes && normalize(ex.notes).includes(lowerSearch))
       );
     }
 
@@ -358,8 +397,11 @@ export default function App() {
     setCategory('');
     setAmount('');
     setNotes('');
+    setReceiptUrl(undefined);
     setEditingId(null);
+    setEditReason('');
     originalExpenseForAudit.current = null;
+    editingGroupSiblings.current = [];
   }, []);
 
   // Reset all states and return to Home dashboard
@@ -378,6 +420,34 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     showToast("Retornado ao início do painel!", "info");
   }, [resetForm, availableDates, availableMonths, showToast]);
+
+  // Contagem de tarefas pendentes do To-Do para "Hoje"
+  const pendingTodosToday = useMemo(() => {
+    const today = getTodayLocal();
+    const todos = getCachedTodos();
+    return todos.filter(t => !t.completed && (t.dueDate === today || !t.dueDate)).length;
+  }, [currentView]);
+
+  // Fechar modais ao pressionar ESC
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (editPasswordModal.open) {
+          setEditPasswordModal({ open: false, expense: null });
+          setEditPasswordInput('');
+        }
+        if (deleteModal.open) {
+          setDeleteModal({ open: false, step: 'confirm', expense: null });
+          setDeletePasswordInput('');
+        }
+        if (isSettingsOpen) setIsSettingsOpen(false);
+        if (showBackupOptions) setShowBackupOptions(false);
+        if (showPrintPreview) setShowPrintPreview(false);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [editPasswordModal.open, deleteModal.open, isSettingsOpen, showBackupOptions, showPrintPreview]);
 
   const handleAmountChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value.replace(/\D/g, '');
@@ -425,48 +495,147 @@ export default function App() {
     try {
       if (editingId) {
         const prev = originalExpenseForAudit.current;
+        const isTargetGroup = isGroupStore(store);
 
-        await updateExpense(editingId, {
-          date,
-          description,
-          store,
-          category,
-          amount: totalVal,
-          notes,
-          employeeName: activeEmployeeName
-        });
+        if (isTargetGroup) {
+          // Lançamento consolidado por Grupo de Lojas (Todas, Piracicaba, Amparo)
+          const entries = splitExpense(store as any, totalVal);
+          const targetStores = entries.map(e => e.s);
 
-        // Grava auditoria de edição
-        if (prev) {
-          logAuditEvent({
-            actionType: 'EDIT',
-            actionDate: new Date().toISOString(),
-            userName: sessionUser?.name || 'Administrador',
-            userEmail: sessionUser?.email || '',
-            expenseId: editingId,
-            previousData: {
-              description: prev.description,
-              store: prev.store,
-              category: prev.category,
-              amount: prev.amount,
-              date: prev.date,
-              notes: prev.notes,
-              employeeName: prev.employeeName
-            },
-            newData: {
-              description,
-              store,
-              category,
-              amount: totalVal,
-              date,
-              notes,
-              employeeName: activeEmployeeName
+          // Irmãos prévios do grupo
+          const existingSiblings = editingGroupSiblings.current.length > 0
+            ? editingGroupSiblings.current
+            : [prev || expenses.find(e => e.id === editingId)!].filter(Boolean);
+
+          for (const ent of entries) {
+            const matchingSibling = existingSiblings.find(s => s.store === ent.s);
+            if (matchingSibling) {
+              await updateExpense(matchingSibling.id, {
+                date,
+                description,
+                store: ent.s,
+                category,
+                amount: ent.v,
+                notes,
+                employeeName: activeEmployeeName,
+                originalTotal: totalVal,
+                receiptUrl: receiptUrl || undefined,
+                editReason: editReason || undefined
+              });
+            } else {
+              // Nova loja para o grupo (ex: mudou de 3 para 5 lojas)
+              await addExpense({
+                date,
+                description,
+                category,
+                notes,
+                store: ent.s,
+                amount: ent.v,
+                quantity: 1.0,
+                employeeName: activeEmployeeName,
+                originalTotal: totalVal,
+                receiptUrl: receiptUrl || undefined
+              });
             }
-          });
-        }
+          }
 
-        showToast("Lançamento atualizado e registrado na auditoria!");
-        resetForm();
+          // Exclui lojas que deixaram de fazer parte do grupo
+          const removedSiblings = existingSiblings.filter(s => !targetStores.includes(s.store as any));
+          for (const rem of removedSiblings) {
+            await deleteExpense(rem.id, editReason || "Ajuste de lojas na edição do grupo", activeEmployeeName);
+          }
+
+          // Auditoria
+          if (prev) {
+            logAuditEvent({
+              actionType: 'EDIT',
+              actionDate: new Date().toISOString(),
+              userName: sessionUser?.name || 'Administrador',
+              userEmail: sessionUser?.email || '',
+              expenseId: editingId,
+              reason: editReason || `Edição consolidada do grupo ${store}`,
+              previousData: {
+                description: prev.description,
+                store: prev.store,
+                category: prev.category,
+                amount: prev.amount,
+                date: prev.date,
+                notes: prev.notes,
+                employeeName: prev.employeeName,
+                receiptUrl: prev.receiptUrl
+              },
+              newData: {
+                description,
+                store,
+                category,
+                amount: totalVal,
+                date,
+                notes,
+                employeeName: activeEmployeeName,
+                receiptUrl: receiptUrl || undefined
+              }
+            });
+          }
+
+          showToast(`Lançamento e valores corrigidos para todas as ${entries.length} lojas do grupo ${store}!`, "success");
+          editingGroupSiblings.current = [];
+          resetForm();
+        } else {
+          // Lançamento individual para uma única loja
+          await updateExpense(editingId, {
+            date,
+            description,
+            store,
+            category,
+            amount: totalVal,
+            notes,
+            employeeName: activeEmployeeName,
+            originalTotal: null,
+            receiptUrl: receiptUrl || undefined,
+            editReason: editReason || undefined
+          });
+
+          // Se anteriormente fazia parte de um grupo e foi alterado para loja individual, remover os outros irmãos
+          const otherSiblings = editingGroupSiblings.current.filter(s => s.id !== editingId);
+          for (const sib of otherSiblings) {
+            await deleteExpense(sib.id, editReason || "Desagrupamento na edição para loja individual", activeEmployeeName);
+          }
+
+          if (prev) {
+            logAuditEvent({
+              actionType: 'EDIT',
+              actionDate: new Date().toISOString(),
+              userName: sessionUser?.name || 'Administrador',
+              userEmail: sessionUser?.email || '',
+              expenseId: editingId,
+              reason: editReason || 'Edição de lançamento',
+              previousData: {
+                description: prev.description,
+                store: prev.store,
+                category: prev.category,
+                amount: prev.amount,
+                date: prev.date,
+                notes: prev.notes,
+                employeeName: prev.employeeName,
+                receiptUrl: prev.receiptUrl
+              },
+              newData: {
+                description,
+                store,
+                category,
+                amount: totalVal,
+                date,
+                notes,
+                employeeName: activeEmployeeName,
+                receiptUrl: receiptUrl || undefined
+              }
+            });
+          }
+
+          showToast("Lançamento atualizado e registrado na auditoria!");
+          editingGroupSiblings.current = [];
+          resetForm();
+        }
       } else {
         const entries = splitExpense(store as any, totalVal);
 
@@ -480,7 +649,8 @@ export default function App() {
             amount: ent.v,
             quantity: 1.0,
             employeeName: activeEmployeeName,
-            originalTotal: entries.length > 1 ? totalVal : null
+            originalTotal: entries.length > 1 ? totalVal : null,
+            receiptUrl: receiptUrl || undefined
           };
           await addExpense(newDoc);
         }
@@ -492,12 +662,13 @@ export default function App() {
     } finally {
       setIsSubmitting(false);
     }
-  }, [isSubmitting, sessionUser, settings.employeeName, amount, date, description, store, category, notes, editingId, updateExpense, addExpense, resetForm, showToast]);
+  }, [isSubmitting, sessionUser, settings.employeeName, amount, date, description, store, category, notes, receiptUrl, editingId, editReason, updateExpense, addExpense, deleteExpense, expenses, resetForm, showToast]);
 
   // Handle Edit Click (Opens Edit Password Modal)
   const handleEditClick = useCallback((ex: Expense) => {
     setEditPasswordModal({ open: true, expense: ex });
     setEditPasswordInput('');
+    setEditReason('');
   }, []);
 
   // Confirm Edit Password
@@ -510,33 +681,49 @@ export default function App() {
     if (editPasswordModal.expense) {
       const ex = editPasswordModal.expense;
       originalExpenseForAudit.current = ex;
+
+      // Detecta se a despesa pertence a um grupo rateado (Todas, Piracicaba, Amparo)
+      const groupInfo = detectExpenseGroup(ex, expenses);
+      editingGroupSiblings.current = groupInfo.siblings;
+
       setEditingId(ex.id);
       setDate(ex.date);
       setDescription(ex.description);
-      setStore(ex.store);
+      setStore(groupInfo.isGroup && groupInfo.groupName ? groupInfo.groupName : ex.store);
       setCategory(ex.category);
-      setAmount(formatCurrency(ex.amount));
+      setAmount(formatCurrency(groupInfo.totalAmount));
       setNotes(ex.notes || '');
+      setReceiptUrl(ex.receiptUrl || undefined);
       setEditPasswordModal({ open: false, expense: null });
       setEditPasswordInput('');
       setCurrentView('dashboard');
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      showToast("Modo de edição liberado!", "info");
+      showToast(
+        groupInfo.isGroup && groupInfo.groupName
+          ? `Modo de edição: grupo ${groupInfo.groupName} carregado com valor total!`
+          : "Modo de edição liberado!",
+        "info"
+      );
     }
-  }, [editPasswordInput, editPasswordModal.expense, showToast]);
+  }, [editPasswordInput, editPasswordModal.expense, expenses, showToast]);
 
   // Handle Delete Click (Opens Delete Step 1: Confirmation)
   const handleDeleteClick = useCallback((ex: Expense) => {
     setDeleteModal({ open: true, step: 'confirm', expense: ex });
     setDeletePasswordInput('');
+    setDeleteReason('');
   }, []);
 
   // Delete Step 1 -> Proceed to Step 2 (Password)
   const proceedToDeletePassword = useCallback(() => {
+    if (!deleteReason.trim()) {
+      showToast("Informe o motivo da exclusão antes de continuar.", "error");
+      return;
+    }
     setDeleteModal(prev => ({ ...prev, step: 'password' }));
-  }, []);
+  }, [deleteReason, showToast]);
 
-  // Confirm Delete Password & Log Audit
+  // Confirm Delete Password & Log Audit (Soft Delete)
   const confirmDeletePassword = useCallback(async () => {
     if (!validateAdminPassword(deletePasswordInput)) {
       showToast("Senha incorreta.", "error");
@@ -551,15 +738,16 @@ export default function App() {
         return;
       }
 
-      await deleteExpense(ex.id);
+      await deleteExpense(ex.id, deleteReason, sessionUser?.name || 'Administrador');
 
-      // Grava auditoria de exclusão
+      // Grava auditoria de exclusão com motivo
       logAuditEvent({
         actionType: 'DELETE',
         actionDate: new Date().toISOString(),
         userName: sessionUser?.name || 'Administrador',
         userEmail: sessionUser?.email || '',
         expenseId: ex.id,
+        reason: deleteReason,
         previousData: {
           description: ex.description,
           store: ex.store,
@@ -567,15 +755,17 @@ export default function App() {
           amount: ex.amount,
           date: ex.date,
           notes: ex.notes,
-          employeeName: ex.employeeName
+          employeeName: ex.employeeName,
+          receiptUrl: ex.receiptUrl
         }
       });
 
       setDeleteModal({ open: false, step: 'confirm', expense: null });
       setDeletePasswordInput('');
+      setDeleteReason('');
       showToast("Lançamento excluído e registrado na auditoria!", "success");
     }
-  }, [deletePasswordInput, deleteModal.expense, canDelete, deleteExpense, sessionUser, showToast]);
+  }, [deletePasswordInput, deleteModal.expense, deleteReason, canDelete, deleteExpense, sessionUser, showToast]);
 
   const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -670,6 +860,7 @@ export default function App() {
     dashboard: "Visão Geral",
     calendar: "Calendário",
     analytics: "Análise & Métricas",
+    closing: "Fechamento Consolidado",
     payments: "Pagamentos Fixos",
     audit: "Registros & Auditoria",
     todo: "Tarefas & To-Do"
@@ -815,6 +1006,18 @@ export default function App() {
             </button>
 
             <button
+              onClick={() => { setCurrentView('closing'); setMobileMenuOpen(false); }}
+              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
+                currentView === 'closing'
+                  ? 'bg-white/10 text-white font-semibold shadow-sm border border-white/10'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <FileText className="w-4 h-4 text-rose-400" />
+              <span>Fechamento Mensal</span>
+            </button>
+
+            <button
               onClick={() => { setCurrentView('payments'); setMobileMenuOpen(false); }}
               className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
                 currentView === 'payments'
@@ -836,6 +1039,11 @@ export default function App() {
             >
               <ListTodo className="w-4 h-4 text-amber-400" />
               <span>Tarefas & To-Do</span>
+              {pendingTodosToday > 0 && (
+                <span className="ml-auto text-[10px] font-bold bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded-full">
+                  {pendingTodosToday}
+                </span>
+              )}
             </button>
 
             {/* Relatorios & Tools */}
@@ -948,14 +1156,6 @@ export default function App() {
             {currentView === 'dashboard' && (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={handleResetAllToHome}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-xs font-bold rounded-lg transition-all shadow-xs cursor-pointer"
-                  title="Voltar ao início e resetar filtros"
-                >
-                  <Home className="w-3.5 h-3.5 text-amber-700" />
-                  <span>Início</span>
-                </button>
-                <button
                   onClick={handlePrint}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition-all shadow-xs cursor-pointer"
                   title="Pré-visualizar e Imprimir"
@@ -995,6 +1195,15 @@ export default function App() {
                 currency={settings.currency}
               />
             </Suspense>
+          ) : currentView === 'closing' ? (
+            <Suspense fallback={<LoadingSpinner />}>
+              <MonthlyClosingView
+                expenses={expenses}
+                currency={settings.currency}
+                employeeName={sessionUser?.name || settings.employeeName}
+                showToast={showToast}
+              />
+            </Suspense>
           ) : currentView === 'payments' ? (
             <Suspense fallback={<LoadingSpinner />}>
               <FixedPaymentsManager
@@ -1015,306 +1224,42 @@ export default function App() {
             </Suspense>
           ) : (
             <>
-              {/* KPI Cards Grid (Matches Reference Image Format) */}
+              {/* KPI Cards Grid (Modularizado) */}
               {expenses.length > 0 && (
-                <div className="space-y-5 no-print">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    {/* Card 1: Volume Total (Image Style) */}
-                    <div className="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-sm relative overflow-hidden flex flex-col justify-between hover:border-slate-300 transition-all">
-                      <div className="flex items-center justify-between">
-                        <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
-                          <DollarSign className="w-4 h-4" />
-                        </div>
-                        <span className="border border-slate-200 bg-slate-50 text-slate-600 rounded px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
-                          Volume Total
-                        </span>
-                      </div>
-
-                      <div className="mt-4">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Filtrado</p>
-                        <h3 className="text-3xl sm:text-4xl font-bold mt-1 text-slate-950 tabular-nums tracking-tight">
-                          {settings.currency} {formatCurrency(totalGeneral)}
-                        </h3>
-                      </div>
-
-                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
-                          {filteredExpenses.length} Lançamentos
-                        </span>
-                        <span className="text-xs text-emerald-600 font-semibold flex items-center gap-1">
-                          <TrendingUp className="w-3.5 h-3.5" /> Base Ativa
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Card 2: Mix Ativo / Histórico */}
-                    <div className="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-sm relative overflow-hidden flex flex-col justify-between hover:border-slate-300 transition-all">
-                      <div className="flex items-center justify-between">
-                        <div className="w-8 h-8 rounded-lg bg-cyan-50 text-cyan-600 flex items-center justify-center">
-                          <BarChart2 className="w-4 h-4" />
-                        </div>
-                        <span className="border border-slate-200 bg-slate-50 text-slate-600 rounded px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
-                          Mix Ativo
-                        </span>
-                      </div>
-
-                      <div className="mt-4">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Volume Geral Acumulado</p>
-                        <h3 className="text-3xl sm:text-4xl font-bold mt-1 text-slate-950 tabular-nums tracking-tight">
-                          {settings.currency} {formatCurrency(expenses.reduce((s, e) => s + e.amount, 0))}
-                        </h3>
-                      </div>
-
-                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
-                          {expenses.length} Total Geral
-                        </span>
-                        <span className="text-xs text-cyan-600 font-semibold">
-                          Histórico Completo
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Card 3: Top Performer / Lojas */}
-                    <div className="p-6 rounded-2xl bg-white border border-slate-200/90 shadow-sm relative overflow-hidden flex flex-col justify-between hover:border-slate-300 transition-all">
-                      <div className="flex items-center justify-between">
-                        <div className="w-8 h-8 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
-                          <Store className="w-4 h-4" />
-                        </div>
-                        <span className="border border-slate-200 bg-slate-50 text-slate-600 rounded px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase">
-                          Top Performer
-                        </span>
-                      </div>
-
-                      <div className="mt-4">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Lojas Ativas</p>
-                        <h3 className="text-3xl sm:text-4xl font-bold mt-1 text-slate-950 tabular-nums tracking-tight">
-                          {Object.keys(totalsByStore).length} Lojas
-                        </h3>
-                      </div>
-
-                      <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
-                          Centros de Custo
-                        </span>
-                        <span className="text-xs text-purple-600 font-semibold">
-                          Em Operação
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Store Breakdown Horizontal Bar Cards */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 pt-1">
-                    {Object.entries(totalsByStore).sort((a, b) => b[1] - a[1]).map(([storeName, val]) => (
-                      <div
-                        key={storeName}
-                        className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-sm hover:border-slate-300 transition-all"
-                      >
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <img
-                            src={STORE_IMAGES[storeName] || STORE_IMAGES["default"]}
-                            alt={storeName}
-                            className="w-5 h-5 rounded object-cover"
-                          />
-                          <span className="text-[10px] uppercase font-bold text-slate-500 truncate block tracking-wider">
-                            {storeName}
-                          </span>
-                        </div>
-                        <span className="text-sm font-bold text-slate-900 block tabular-nums">
-                          {settings.currency} {formatCurrency(val)}
-                        </span>
-                        <div className="h-1.5 w-full rounded-full bg-slate-100 mt-2.5 overflow-hidden border border-slate-100">
-                          <div
-                            className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all duration-500"
-                            style={{ width: `${totalGeneral > 0 ? Math.min((val / totalGeneral) * 100, 100) : 0}%` }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
+                <ExpenseSummaryCards
+                  expenses={expenses}
+                  filteredExpenses={filteredExpenses}
+                  totalsByStore={totalsByStore}
+                  totalGeneral={totalGeneral}
+                  currency={settings.currency}
+                />
               )}
 
-              {/* Form: Novo / Editar Lançamento */}
-              <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden no-print">
-                <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <h3 className="text-sm font-bold text-slate-900 tracking-tight flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
-                      {editingId ? <Edit className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                    </div>
-                    {editingId ? "Editar Lançamento (Modo Seguro)" : "Novo Lançamento"}
-                  </h3>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {editingId && (
-                      <button
-                        type="button"
-                        onClick={() => { resetForm(); showToast("Edição cancelada", "info"); }}
-                        className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-200 text-slate-700 hover:bg-slate-300 transition-colors cursor-pointer flex items-center gap-1"
-                      >
-                        <X className="w-3.5 h-3.5" /> Cancelar Edição
-                      </button>
-                    )}
-                    {!editingId && (
-                      <button
-                        type="button"
-                        onClick={resetForm}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-all cursor-pointer"
-                        title="Limpar campos do formulário"
-                      >
-                        <RotateCcw className="w-3 h-3" /> Limpar
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={handleResetAllToHome}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-100/70 border border-amber-200 text-amber-800 hover:bg-amber-100 hover:border-amber-300 transition-all cursor-pointer shadow-2xs"
-                      title="Resetar filtros, buscas e voltar ao início do painel"
-                    >
-                      <Home className="w-3.5 h-3.5 text-amber-700" /> Voltar ao Início
-                    </button>
-                  </div>
-                </div>
-
-                <div className="p-6 sm:p-8">
-                  <form onSubmit={handleSubmit} className="space-y-5">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                      {/* Date */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Data</label>
-                        <DateInput
-                          required
-                          value={date}
-                          onChange={e => setDate(e.target.value)}
-                          className="liquid-input w-full px-4 py-2.5 rounded-lg text-sm font-semibold"
-                        />
-                      </div>
-
-                      {/* Category */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Categoria</label>
-                        <div className="relative">
-                          <select
-                            required
-                            value={category}
-                            onChange={e => setCategory(e.target.value)}
-                            className="liquid-input w-full px-4 py-2.5 rounded-lg appearance-none text-sm font-semibold cursor-pointer text-slate-900"
-                          >
-                            <option value="" disabled className="text-slate-400">Selecione uma categoria...</option>
-                            {settings.categories.map((c, i) => (
-                              <option key={i} value={c.label}>
-                                {c.label}
-                              </option>
-                            ))}
-                          </select>
-                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                            <Tag className="w-4 h-4" />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Description */}
-                      <div className="space-y-1.5 md:col-span-2">
-                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Descrição</label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="Ex: Café com cliente, material de escritório..."
-                          value={description}
-                          onChange={e => setDescription(e.target.value)}
-                          className="liquid-input w-full px-4 py-2.5 rounded-lg text-sm font-medium"
-                        />
-                      </div>
-
-                      {/* Store / Group */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">Loja / Grupo</label>
-                        <div className="relative">
-                          <select
-                            required
-                            value={store}
-                            onChange={e => setStore(e.target.value)}
-                            className="liquid-input w-full px-4 py-2.5 rounded-lg appearance-none text-sm font-semibold cursor-pointer text-slate-900"
-                          >
-                            <option value="" disabled className="text-slate-400">Selecione a loja...</option>
-                            {STORES_LIST.map((l, i) => (
-                              <option key={i} value={l}>
-                                {l}
-                              </option>
-                            ))}
-                          </select>
-                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                            <Store className="w-4 h-4" />
-                          </div>
-                        </div>
-                        {!editingId && store.includes("Piracicaba") && (
-                          <p className="text-[11px] text-amber-600 font-medium pt-1">* Divide automaticamente por 3 lojas</p>
-                        )}
-                        {!editingId && store.includes("Amparo") && (
-                          <p className="text-[11px] text-purple-600 font-medium pt-1">* Divide automaticamente por 2 lojas</p>
-                        )}
-                        {!editingId && store === "Todas" && (
-                          <p className="text-[11px] text-emerald-600 font-medium pt-1">* Divide automaticamente por 5 lojas</p>
-                        )}
-                      </div>
-
-                      {/* Amount */}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                          Valor ({settings.currency})
-                        </label>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            required
-                            placeholder="0,00"
-                            value={amount}
-                            onChange={handleAmountChange}
-                            onPaste={handleAmountPaste}
-                            className="liquid-input w-full pl-4 pr-10 py-2.5 rounded-lg text-sm font-bold text-slate-900 tabular-nums"
-                          />
-                          <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                            <DollarSign className="w-4 h-4" />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Notes */}
-                      <div className="space-y-1.5 md:col-span-2">
-                        <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-                          Observações (Opcional)
-                        </label>
-                        <input
-                          type="text"
-                          placeholder="Detalhes adicionais, número de nota..."
-                          value={notes}
-                          onChange={e => setNotes(e.target.value)}
-                          className="liquid-input w-full px-4 py-2.5 rounded-lg text-sm font-normal text-slate-700"
-                        />
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="w-full py-3 px-6 rounded-lg font-bold text-sm bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 active:scale-[0.99] transition-all shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 mt-4 disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
-                    >
-                      {isSubmitting ? (
-                        <svg className="w-5 h-5 animate-spin text-slate-950" viewBox="0 0 24 24" fill="none">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                        </svg>
-                      ) : editingId ? (
-                        <Check className="w-4 h-4" />
-                      ) : (
-                        <Plus className="w-4 h-4" />
-                      )}
-                      {isSubmitting ? "Gravando..." : editingId ? "Salvar Alterações" : "Adicionar Lançamento"}
-                    </button>
-                  </form>
-                </div>
-              </div>
+              {/* Form: Novo / Editar Lançamento (Modularizado com Comprovante) */}
+              <ExpenseForm
+                date={date}
+                setDate={setDate}
+                category={category}
+                setCategory={setCategory}
+                description={description}
+                setDescription={setDescription}
+                store={store}
+                setStore={setStore}
+                amount={amount}
+                setAmount={setAmount}
+                notes={notes}
+                setNotes={setNotes}
+                receiptUrl={receiptUrl}
+                setReceiptUrl={setReceiptUrl}
+                editingId={editingId}
+                isSubmitting={isSubmitting}
+                currency={settings.currency}
+                categoriesList={settings.categories}
+                onSubmit={handleSubmit}
+                onReset={resetForm}
+                onResetAllToHome={handleResetAllToHome}
+                showToast={showToast}
+              />
 
               {/* Empty state */}
               {expenses.length === 0 && !expensesLoading && (
@@ -1566,65 +1511,15 @@ export default function App() {
                             </thead>
                             <tbody className="divide-y divide-slate-100 text-slate-700">
                               {group.items.map(ex => (
-                                <tr key={ex.id} className="hover:bg-slate-50/80 transition-colors group">
-                                  {groupBy === 'date' && (
-                                    <td className="px-6 py-3.5 whitespace-nowrap">
-                                      <div className="flex items-center gap-2">
-                                        <img
-                                          src={STORE_IMAGES[ex.store] || STORE_IMAGES["default"]}
-                                          alt={ex.store}
-                                          className="w-4 h-4 rounded object-cover"
-                                        />
-                                        <span className="font-semibold text-slate-900">{ex.store}</span>
-                                      </div>
-                                    </td>
-                                  )}
-                                  <td className="px-6 py-3.5 text-slate-500 font-medium whitespace-nowrap">
-                                    {ex.employeeName || settings.employeeName}
-                                  </td>
-                                  <td className="px-6 py-3.5 whitespace-nowrap">
-                                    <span className="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200">
-                                      {ex.category}
-                                    </span>
-                                  </td>
-                                  <td className="px-6 py-3.5 whitespace-nowrap text-slate-500 font-medium">
-                                    {formatDateBR(ex.date)}
-                                  </td>
-                                  <td className="px-6 py-3.5">
-                                    <div className="font-medium text-slate-900 leading-tight">
-                                      {ex.description}
-                                    </div>
-                                    {ex.notes && (
-                                      <div className="text-[11px] text-slate-400 mt-0.5 italic">{ex.notes}</div>
-                                    )}
-                                  </td>
-                                  <td className="px-6 py-3.5 text-right font-bold text-slate-950 tabular-nums whitespace-nowrap">
-                                    <div>{formatCurrency(ex.amount)}</div>
-                                    {ex.originalTotal && (
-                                      <div className="text-[9px] text-slate-400 font-normal">
-                                        Orig: {formatCurrency(ex.originalTotal)}
-                                      </div>
-                                    )}
-                                  </td>
-                                  <td className="px-6 py-3.5 text-center no-print">
-                                    <div className="flex items-center justify-center gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
-                                      <button
-                                        onClick={() => handleEditClick(ex)}
-                                        className="p-1 text-slate-400 hover:text-amber-600 hover:bg-slate-100 rounded transition-all cursor-pointer"
-                                        title="Editar Lançamento"
-                                      >
-                                        <Edit className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        onClick={() => handleDeleteClick(ex)}
-                                        className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-all cursor-pointer"
-                                        title="Excluir Lançamento"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
+                                <ExpenseTableRow
+                                  key={ex.id}
+                                  expense={ex}
+                                  groupBy={groupBy}
+                                  defaultEmployeeName={settings.employeeName}
+                                  onEdit={handleEditClick}
+                                  onDelete={handleDeleteClick}
+                                  onViewReceipt={setViewReceiptExpense}
+                                />
                               ))}
                             </tbody>
                           </table>
@@ -1643,7 +1538,7 @@ export default function App() {
       {editPasswordModal.open && editPasswordModal.expense && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in no-print"
-          onClick={() => { setEditPasswordModal({ open: false, expense: null }); setEditPasswordInput(''); }}
+          onClick={() => { setEditPasswordModal({ open: false, expense: null }); setEditPasswordInput(''); setEditReason(''); }}
         >
           <div
             className="bg-white border border-slate-200 w-full max-w-sm rounded-2xl p-6 text-center shadow-2xl"
@@ -1656,25 +1551,39 @@ export default function App() {
             <p className="text-xs text-slate-600 mb-1 font-bold">
               {editPasswordModal.expense.description}
             </p>
-            <p className="text-[11px] text-slate-400 mb-5">
+            <p className="text-[11px] text-slate-400 mb-4">
               Digite a senha de administrador para liberar a edição deste item.
             </p>
+
+            <div className="mb-3.5 text-left space-y-1">
+              <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
+                Motivo da Edição (Opcional)
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: Correção de valor de nota fiscal..."
+                value={editReason}
+                onChange={e => setEditReason(e.target.value)}
+                className="liquid-input w-full px-3 py-2 rounded-lg text-xs text-slate-900 font-medium"
+              />
+            </div>
+
             <input
               type="password"
               autoFocus
-              placeholder="Senha"
+              placeholder="Senha de Administrador"
               value={editPasswordInput}
               onChange={e => setEditPasswordInput(e.target.value)}
               onKeyDown={e => {
                 if (e.key === 'Enter') confirmEditPassword();
-                if (e.key === 'Escape') { setEditPasswordModal({ open: false, expense: null }); setEditPasswordInput(''); }
+                if (e.key === 'Escape') { setEditPasswordModal({ open: false, expense: null }); setEditPasswordInput(''); setEditReason(''); }
               }}
               className="liquid-input w-full px-4 py-2.5 rounded-lg text-center font-bold text-slate-900 mb-5 placeholder-slate-400 text-sm"
             />
             <div className="flex gap-2.5">
               <button
                 type="button"
-                onClick={() => { setEditPasswordModal({ open: false, expense: null }); setEditPasswordInput(''); }}
+                onClick={() => { setEditPasswordModal({ open: false, expense: null }); setEditPasswordInput(''); setEditReason(''); }}
                 className="flex-1 py-2.5 bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-200 transition-all cursor-pointer"
               >
                 Cancelar
@@ -1691,11 +1600,11 @@ export default function App() {
         </div>
       )}
 
-      {/* Delete 2-Step Modal (Step 1: Confirm -> Step 2: Password) */}
+      {/* Delete 2-Step Modal (Step 1: Confirm & Reason -> Step 2: Password) */}
       {deleteModal.open && deleteModal.expense && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in no-print"
-          onClick={() => { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); }}
+          onClick={() => { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); setDeleteReason(''); }}
         >
           <div
             className="bg-white border border-slate-200 w-full max-w-md rounded-2xl p-6 text-center shadow-2xl"
@@ -1706,25 +1615,40 @@ export default function App() {
             </div>
 
             {deleteModal.step === 'confirm' ? (
-              /* Passo 1: Confirmar intenção de excluir */
+              /* Passo 1: Confirmar intenção de excluir + Justificativa Obrigatória */
               <div>
                 <h3 className="text-lg font-bold text-slate-900 mb-1">Deseja realmente excluir?</h3>
                 <p className="text-xs text-slate-500 mb-4">
-                  Esta ação removerá o lançamento do banco de dados e registrará o evento na auditoria.
+                  Esta ação moverá o lançamento para a lixeira (soft-delete) e registrará o evento na auditoria.
                 </p>
 
                 {/* Detalhes do item a ser excluído */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-left mb-6 space-y-1.5 text-xs">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-left mb-4 space-y-1.5 text-xs">
                   <p><strong className="text-slate-900">Descrição:</strong> {deleteModal.expense.description}</p>
                   <p><strong className="text-slate-900">Loja / Categoria:</strong> {deleteModal.expense.store} • {deleteModal.expense.category}</p>
                   <p><strong className="text-slate-900">Data:</strong> {formatDateBR(deleteModal.expense.date)}</p>
                   <p><strong className="text-slate-900">Valor:</strong> <span className="font-bold text-rose-700">R$ {formatCurrency(deleteModal.expense.amount)}</span></p>
                 </div>
 
+                {/* Justificativa Obrigatória */}
+                <div className="mb-5 text-left space-y-1.5">
+                  <label className="text-xs font-bold text-slate-700 block uppercase tracking-wider">
+                    Motivo / Justificativa da Exclusão <span className="text-rose-500">*</span>
+                  </label>
+                  <textarea
+                    rows={2}
+                    required
+                    placeholder="Informe o motivo da exclusão para registro na auditoria..."
+                    value={deleteReason}
+                    onChange={e => setDeleteReason(e.target.value)}
+                    className="liquid-input w-full p-2.5 rounded-xl text-xs text-slate-900 font-medium placeholder-slate-400"
+                  />
+                </div>
+
                 <div className="flex gap-2.5">
                   <button
                     type="button"
-                    onClick={() => { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); }}
+                    onClick={() => { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); setDeleteReason(''); }}
                     className="flex-1 py-2.5 bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-200 transition-all cursor-pointer"
                   >
                     Não, Manter
@@ -1742,9 +1666,17 @@ export default function App() {
               /* Passo 2: Solicitar senha de administrador */
               <div>
                 <h3 className="text-lg font-bold text-slate-900 mb-1">Senha de Confirmação</h3>
-                <p className="text-xs text-slate-500 mb-5">
+                <p className="text-xs text-slate-500 mb-3">
                   Digite a senha de administrador para concluir a exclusão de <strong>{deleteModal.expense.description}</strong>.
                 </p>
+
+                {deleteReason && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-left mb-4 text-xs">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Justificativa:</span>
+                    <span className="text-slate-800 font-semibold">{deleteReason}</span>
+                  </div>
+                )}
+
                 <input
                   type="password"
                   autoFocus
@@ -1753,14 +1685,14 @@ export default function App() {
                   onChange={e => setDeletePasswordInput(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter') confirmDeletePassword();
-                    if (e.key === 'Escape') { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); }
+                    if (e.key === 'Escape') { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); setDeleteReason(''); }
                   }}
                   className="liquid-input w-full px-4 py-2.5 rounded-lg text-center font-bold text-slate-900 mb-5 placeholder-slate-400 text-sm"
                 />
                 <div className="flex gap-2.5">
                   <button
                     type="button"
-                    onClick={() => { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); }}
+                    onClick={() => { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); setDeleteReason(''); }}
                     className="flex-1 py-2.5 bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-200 transition-all cursor-pointer"
                   >
                     Cancelar
@@ -1778,6 +1710,12 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Visualizador de Comprovante Anexado */}
+      <ReceiptModal
+        expense={viewReceiptExpense}
+        onClose={() => setViewReceiptExpense(null)}
+      />
 
       {/* Settings Modal */}
       {isSettingsOpen && (

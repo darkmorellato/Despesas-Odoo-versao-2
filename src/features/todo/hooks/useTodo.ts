@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import { db } from '@/config/firebase';
 import { collection, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
-import type { TodoItem, TodoRepeat } from '../types';
+import type { TodoItem, TodoRepeat, TodoStep } from '../types';
 import { getCachedTodos, saveCachedTodos, addTodoDoc, updateTodoDoc, deleteTodoDoc } from '../services/todoService';
-import { playNotificationSound, playSynthesizedBeep } from '@/shared/utils/audio';
+import { playTodoAlertSound, playSynthesizedBeep } from '@/shared/utils/audio';
+import { showNativeNotification, requestNotificationPermission } from '@/shared/utils/notifications';
+import { getTodayLocal } from '@/shared/utils/formatters';
 
-const getNextRecurrenceDate = (currentDateStr?: string, repeat?: TodoRepeat): string => {
+export const getNextRecurrenceDate = (currentDateStr?: string, repeat?: TodoRepeat): string => {
   let baseDate = new Date();
   if (currentDateStr) {
     const parts = currentDateStr.split('-');
@@ -16,10 +18,17 @@ const getNextRecurrenceDate = (currentDateStr?: string, repeat?: TodoRepeat): st
 
   if (repeat === 'daily') {
     baseDate.setDate(baseDate.getDate() + 1);
+  } else if (repeat === 'weekdays') {
+    do {
+      baseDate.setDate(baseDate.getDate() + 1);
+    } while (baseDate.getDay() === 0 || baseDate.getDay() === 6);
   } else if (repeat === 'weekly') {
     baseDate.setDate(baseDate.getDate() + 7);
   } else if (repeat === 'monthly') {
-    baseDate.setMonth(baseDate.getMonth() + 1);
+    const targetDay = baseDate.getDate();
+    baseDate.setMonth(baseDate.getMonth() + 1, 1);
+    const daysInNextMonth = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0).getDate();
+    baseDate.setDate(Math.min(targetDay, daysInNextMonth));
   }
 
   const year = baseDate.getFullYear();
@@ -57,6 +66,9 @@ export const useTodo = (employeeName: string, userEmail: string) => {
               dueTime: data.dueTime,
               repeat: data.repeat || 'none',
               notes: data.notes,
+              steps: data.steps || [],
+              assignedTo: data.assignedTo,
+              assignedToName: data.assignedToName,
               employeeName: data.employeeName || 'Funcionário',
               userEmail: data.userEmail || '',
               createdAt: data.createdAt ? new Date(data.createdAt.seconds * 1000).toISOString() : new Date().toISOString(),
@@ -85,11 +97,16 @@ export const useTodo = (employeeName: string, userEmail: string) => {
     };
   }, []);
 
-  // Monitora horários de vencimento/lembrete e dispara Bip sonoro
+  // Solicita permissão para notificações nativas ao carregar
+  useEffect(() => {
+    requestNotificationPermission().catch(() => {});
+  }, []);
+
+  // Monitora horários de vencimento/lembrete e dispara Bip sonoro + Notificação nativa
   useEffect(() => {
     const checkReminders = () => {
       const now = new Date();
-      const todayStr = now.toISOString().split('T')[0];
+      const todayStr = getTodayLocal();
       const hours = String(now.getHours()).padStart(2, '0');
       const minutes = String(now.getMinutes()).padStart(2, '0');
       const currentTimeStr = `${hours}:${minutes}`;
@@ -97,7 +114,10 @@ export const useTodo = (employeeName: string, userEmail: string) => {
       todos.forEach((task) => {
         if (!task.completed && task.dueDate === todayStr && task.dueTime === currentTimeStr) {
           if (!notifiedTasks.has(task.id)) {
-            playNotificationSound();
+            playTodoAlertSound();
+            showNativeNotification(`🔔 Lembrete To-Do: ${task.title}`, {
+              body: task.notes || (task.assignedTo ? `Atribuído a: ${task.assignedToName || task.assignedTo}` : `Horário agendado: ${currentTimeStr}`),
+            });
             setNotifiedTasks((prev) => new Set(prev).add(task.id));
           }
         }
@@ -116,7 +136,10 @@ export const useTodo = (employeeName: string, userEmail: string) => {
     dueTime?: string | undefined,
     important: boolean = false,
     notes?: string | undefined,
-    repeat: TodoRepeat = 'none'
+    repeat: TodoRepeat = 'none',
+    assignedTo?: string | undefined,
+    assignedToName?: string | undefined,
+    steps?: TodoStep[] | undefined
   ) => {
     if (!title.trim()) return;
 
@@ -130,6 +153,9 @@ export const useTodo = (employeeName: string, userEmail: string) => {
       dueTime,
       repeat,
       notes,
+      steps: steps || [],
+      assignedTo: assignedTo?.trim() || undefined,
+      assignedToName: assignedToName?.trim() || undefined,
       employeeName,
       userEmail,
       createdAt: new Date().toISOString()
@@ -149,6 +175,9 @@ export const useTodo = (employeeName: string, userEmail: string) => {
       dueTime,
       repeat,
       notes,
+      steps: steps || [],
+      assignedTo: assignedTo?.trim() || undefined,
+      assignedToName: assignedToName?.trim() || undefined,
       employeeName,
       userEmail,
       createdAt: new Date().toISOString()
@@ -168,7 +197,7 @@ export const useTodo = (employeeName: string, userEmail: string) => {
     const completedAt = nextCompleted ? new Date().toISOString() : undefined;
 
     if (nextCompleted) {
-      playNotificationSound();
+      playTodoAlertSound();
     } else {
       playSynthesizedBeep();
     }
@@ -185,13 +214,17 @@ export const useTodo = (employeeName: string, userEmail: string) => {
     // Se for uma tarefa recorrente e foi concluída, gera automaticamente a próxima ocorrência!
     if (nextCompleted && target.repeat && target.repeat !== 'none') {
       const nextDueDate = getNextRecurrenceDate(target.dueDate, target.repeat);
+      const resetSteps = target.steps?.map(s => ({ ...s, completed: false }));
       await addTodo(
         target.title,
         nextDueDate,
         target.dueTime,
         target.important,
         target.notes,
-        target.repeat
+        target.repeat,
+        target.assignedTo,
+        target.assignedToName,
+        resetSteps
       );
     }
   }, [todos, addTodo]);
@@ -232,6 +265,44 @@ export const useTodo = (employeeName: string, userEmail: string) => {
     await updateTodoDoc(id, updates);
   }, [todos]);
 
+  // Adicionar etapa/subtarefa
+  const addStep = useCallback(async (todoId: string, stepTitle: string) => {
+    const target = todos.find(t => t.id === todoId);
+    if (!target || !stepTitle.trim()) return;
+
+    const newStep: TodoStep = {
+      id: `step_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      title: stepTitle.trim(),
+      completed: false
+    };
+
+    const updatedSteps = [...(target.steps || []), newStep];
+    await updateTodo(todoId, { steps: updatedSteps });
+    playSynthesizedBeep();
+  }, [todos, updateTodo]);
+
+  // Alternar conclusão de etapa
+  const toggleStep = useCallback(async (todoId: string, stepId: string) => {
+    const target = todos.find(t => t.id === todoId);
+    if (!target || !target.steps) return;
+
+    const updatedSteps = target.steps.map(s =>
+      s.id === stepId ? { ...s, completed: !s.completed } : s
+    );
+
+    await updateTodo(todoId, { steps: updatedSteps });
+    playSynthesizedBeep();
+  }, [todos, updateTodo]);
+
+  // Excluir etapa
+  const deleteStep = useCallback(async (todoId: string, stepId: string) => {
+    const target = todos.find(t => t.id === todoId);
+    if (!target || !target.steps) return;
+
+    const updatedSteps = target.steps.filter(s => s.id !== stepId);
+    await updateTodo(todoId, { steps: updatedSteps });
+  }, [todos, updateTodo]);
+
   return {
     todos,
     isLoading,
@@ -239,6 +310,9 @@ export const useTodo = (employeeName: string, userEmail: string) => {
     toggleComplete,
     toggleImportant,
     deleteTodo,
-    updateTodo
+    updateTodo,
+    addStep,
+    toggleStep,
+    deleteStep
   };
 };

@@ -1,5 +1,6 @@
 import { db } from '@/config/firebase';
 import { collection, doc, getDoc, getDocs, setDoc, query, where, serverTimestamp } from 'firebase/firestore';
+import { ADMIN_PASSWORD } from '@/config/constants';
 import type { AuthenticatedUser, UserCredentials } from '../types';
 
 export const INITIAL_DATABASE_USERS = [
@@ -121,6 +122,28 @@ export const authenticateUser = async ({ email, password }: UserCredentials): Pr
 
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authenticatedUser));
   return authenticatedUser;
+};
+
+/**
+ * Valida se a senha informada pertence a qualquer administrador válido do sistema
+ */
+export const validateAnyAdminPassword = (password: string, currentUserEmail?: string): boolean => {
+  const trimmed = password.trim();
+  if (!trimmed) return false;
+
+  // Validação com a senha mestra padrão
+  if (trimmed === ADMIN_PASSWORD) return true;
+
+  // Se passou e-mail do usuário atual, prioriza conferência com ele
+  if (currentUserEmail) {
+    const userMatch = INITIAL_DATABASE_USERS.find(
+      u => u.email.toLowerCase().trim() === currentUserEmail.toLowerCase().trim()
+    );
+    if (userMatch && userMatch.password === trimmed) return true;
+  }
+
+  // Validação com qualquer administrador cadastrado (ex: Abner Morais ou Dark Morellato)
+  return INITIAL_DATABASE_USERS.some(u => u.password === trimmed);
 };
 
 /**

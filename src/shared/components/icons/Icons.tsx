@@ -249,3 +249,29 @@ export const Sparkles: React.FC<IconComponentProps> = (props) => (
 export const Volume2: React.FC<IconComponentProps> = (props) => (
   <Icon {...props} path='<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path>' />
 );
+
+export const Camera: React.FC<IconComponentProps> = (props) => (
+  <Icon {...props} path='<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle>' />
+);
+
+export const Paperclip: React.FC<IconComponentProps> = (props) => (
+  <Icon {...props} path='<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>' />
+);
+
+export const Image: React.FC<IconComponentProps> = (props) => (
+  <Icon {...props} path='<rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path>' />
+);
+
+export const ShieldCheck: React.FC<IconComponentProps> = (props) => (
+  <Icon {...props} path='<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="m9 12 2 2 4-4"></path>' />
+);
+
+export const ExternalLink: React.FC<IconComponentProps> = (props) => (
+  <Icon {...props} path='<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line>' />
+);
+
+export const Send: React.FC<IconComponentProps> = (props) => (
+  <Icon {...props} path='<line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>' />
+);
+
+

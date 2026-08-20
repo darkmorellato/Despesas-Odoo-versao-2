@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useExpenses } from './useExpenses';
+import { useExpenses, isGroupStore, detectExpenseGroup } from './useExpenses';
 import { addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
 import type { User } from 'firebase/auth';
 
@@ -166,7 +166,48 @@ describe('useExpenses', () => {
     );
   });
 
-  it('deve excluir despesa dentro de 24h', async () => {
+  it('deve realizar soft-delete de despesa dentro de 24h', async () => {
+    let snapshotCallback: ((snapshot: any) => void) | null = null;
+
+    (onSnapshot as any).mockImplementation((_query: any, callback: any) => {
+      snapshotCallback = callback;
+      return () => { };
+    });
+
+    (updateDoc as any).mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useExpenses(mockUser));
+
+    const mockSnapshot = {
+      docs: [mockExpenses[0]].map(exp => ({
+        id: exp.id,
+        data: () => exp
+      }))
+    };
+
+    act(() => {
+      if (snapshotCallback) snapshotCallback(mockSnapshot);
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    await act(async () => {
+      await result.current.deleteExpense('1', 'Motivo de teste', 'Administrador');
+    });
+
+    expect(updateDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        deleted: true,
+        deleteReason: 'Motivo de teste',
+        deletedBy: 'Administrador'
+      })
+    );
+  });
+
+  it('deve realizar hard-delete definitivo de despesa', async () => {
     let snapshotCallback: ((snapshot: any) => void) | null = null;
 
     (onSnapshot as any).mockImplementation((_query: any, callback: any) => {
@@ -194,7 +235,7 @@ describe('useExpenses', () => {
     });
 
     await act(async () => {
-      await result.current.deleteExpense('1');
+      await result.current.hardDeleteExpense('1');
     });
 
     expect(deleteDoc).toHaveBeenCalled();
@@ -295,3 +336,67 @@ describe('useExpenses', () => {
     expect(onSnapshot).not.toHaveBeenCalled();
   });
 });
+
+describe('detectExpenseGroup & isGroupStore', () => {
+  it('deve identificar isGroupStore corretamente', () => {
+    expect(isGroupStore('Todas')).toBe(true);
+    expect(isGroupStore('Piracicaba (DP - Realme - XV)')).toBe(true);
+    expect(isGroupStore('Amparo (Premium - Kassouf)')).toBe(true);
+    expect(isGroupStore('Dom Pedro II')).toBe(false);
+  });
+
+  it('deve detectar grupo "Todas" com 5 lojas irmãs', () => {
+    const allExpenses = [
+      { id: '1', date: '2026-08-20', description: 'Internet Fibra', category: 'Despesa', store: 'Dom Pedro II', amount: 100, originalTotal: 500 },
+      { id: '2', date: '2026-08-20', description: 'Internet Fibra', category: 'Despesa', store: 'Realme', amount: 100, originalTotal: 500 },
+      { id: '3', date: '2026-08-20', description: 'Internet Fibra', category: 'Despesa', store: 'Xv de Novembro', amount: 100, originalTotal: 500 },
+      { id: '4', date: '2026-08-20', description: 'Internet Fibra', category: 'Despesa', store: 'Premium', amount: 100, originalTotal: 500 },
+      { id: '5', date: '2026-08-20', description: 'Internet Fibra', category: 'Despesa', store: 'Kassouf', amount: 100, originalTotal: 500 },
+    ];
+
+    const result = detectExpenseGroup(allExpenses[0] as any, allExpenses as any);
+    expect(result.isGroup).toBe(true);
+    expect(result.groupName).toBe('Todas');
+    expect(result.totalAmount).toBe(500);
+    expect(result.siblings.length).toBe(5);
+  });
+
+  it('deve detectar grupo "Piracicaba" com 3 lojas irmãs', () => {
+    const allExpenses = [
+      { id: '1', date: '2026-08-20', description: 'Limpeza Pira', category: 'Despesa', store: 'Dom Pedro II', amount: 100 },
+      { id: '2', date: '2026-08-20', description: 'Limpeza Pira', category: 'Despesa', store: 'Realme', amount: 100 },
+      { id: '3', date: '2026-08-20', description: 'Limpeza Pira', category: 'Despesa', store: 'Xv de Novembro', amount: 100 },
+    ];
+
+    const result = detectExpenseGroup(allExpenses[1] as any, allExpenses as any);
+    expect(result.isGroup).toBe(true);
+    expect(result.groupName).toBe('Piracicaba (DP - Realme - XV)');
+    expect(result.totalAmount).toBe(300);
+    expect(result.siblings.length).toBe(3);
+  });
+
+  it('deve detectar grupo "Amparo" com 2 lojas irmãs', () => {
+    const allExpenses = [
+      { id: '1', date: '2026-08-20', description: 'Manutenção Amparo', category: 'Despesa', store: 'Premium', amount: 150 },
+      { id: '2', date: '2026-08-20', description: 'Manutenção Amparo', category: 'Despesa', store: 'Kassouf', amount: 150 },
+    ];
+
+    const result = detectExpenseGroup(allExpenses[0] as any, allExpenses as any);
+    expect(result.isGroup).toBe(true);
+    expect(result.groupName).toBe('Amparo (Premium - Kassouf)');
+    expect(result.totalAmount).toBe(300);
+    expect(result.siblings.length).toBe(2);
+  });
+
+  it('deve retornar não-grupo para despesa individual', () => {
+    const allExpenses = [
+      { id: '1', date: '2026-08-20', description: 'Material Exclusivo', category: 'Despesa', store: 'Dom Pedro II', amount: 75 }
+    ];
+
+    const result = detectExpenseGroup(allExpenses[0] as any, allExpenses as any);
+    expect(result.groupName).toBeNull();
+    expect(result.totalAmount).toBe(75);
+    expect(result.siblings.length).toBe(1);
+  });
+});
+

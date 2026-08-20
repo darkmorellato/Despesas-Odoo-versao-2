@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useCallback, memo } from 'react';
-import { ADMIN_PASSWORD } from '@/config/constants';
+import React, { useState, useMemo, useCallback, memo, useEffect } from 'react';
+import { validateAnyAdminPassword } from '@/features/auth';
 import { formatDateBR } from '@/shared/utils/formatters';
 import {
   Calendar,
@@ -46,6 +46,17 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
   const [confirmPayModal, setConfirmPayModal] = useState<{ open: boolean; desc: string | null }>({
     open: false,
     desc: null
+  });
+  const [confirmSelectAllModal, setConfirmSelectAllModal] = useState<{
+    open: boolean;
+    day: number | null;
+    count: number;
+    items: FixedNotification[];
+  }>({
+    open: false,
+    day: null,
+    count: 0,
+    items: []
   });
   const [fixModal, setFixModal] = useState<{ open: boolean; desc: string | null }>({
     open: false,
@@ -98,7 +109,7 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
   }, []);
 
   const confirmFix = useCallback(() => {
-    if (fixPassword === ADMIN_PASSWORD) {
+    if (validateAnyAdminPassword(fixPassword)) {
       if (fixModal.desc) {
         setCheckStatus(fixModal.desc, false);
         setFixModal({ open: false, desc: null });
@@ -108,6 +119,22 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
       if (showToast) showToast("Senha incorreta.", "error");
     }
   }, [fixPassword, fixModal.desc, setCheckStatus, showToast]);
+
+  // Fechar modais com tecla ESC
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (confirmPayModal.open) setConfirmPayModal({ open: false, desc: null });
+        if (confirmSelectAllModal.open) setConfirmSelectAllModal({ open: false, day: null, count: 0, items: [] });
+        if (fixModal.open) {
+          setFixModal({ open: false, desc: null });
+          setFixPassword('');
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [confirmPayModal.open, confirmSelectAllModal.open, fixModal.open]);
 
   const getZoomStyles = () => {
     switch (zoomLevel) {
@@ -172,9 +199,41 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
     });
   }, [FIXED_NOTIFICATIONS, month, selectedDayFilter]);
 
+  const pendingNotifications = useMemo(() => {
+    return filteredNotifications.filter(item => {
+      const key = `${year}-${month}-${item.description}`;
+      return !checkedState[key];
+    });
+  }, [filteredNotifications, year, month, checkedState]);
+
+  const initiateSelectAll = useCallback(() => {
+    if (pendingNotifications.length === 0) {
+      if (showToast) showToast("Todos os pagamentos exibidos já estão marcados como pagos!", "info");
+      return;
+    }
+
+    setConfirmSelectAllModal({
+      open: true,
+      day: selectedDayFilter,
+      count: pendingNotifications.length,
+      items: pendingNotifications
+    });
+  }, [pendingNotifications, selectedDayFilter, showToast]);
+
+  const confirmSelectAll = useCallback(() => {
+    confirmSelectAllModal.items.forEach(item => {
+      setCheckStatus(item.description, true);
+    });
+    const count = confirmSelectAllModal.items.length;
+    setConfirmSelectAllModal({ open: false, day: null, count: 0, items: [] });
+    if (showToast) {
+      showToast(`${count} pagamento(s) confirmado(s) como pago(s)!`, "success");
+    }
+  }, [confirmSelectAllModal.items, setCheckStatus, showToast]);
+
   return (
     <div className="bg-white rounded-2xl overflow-hidden fade-in flex flex-col relative border border-slate-200/90 shadow-sm">
-      {/* Modal Confirmar Pagamento */}
+      {/* Modal Confirmar Pagamento Individual */}
       {confirmPayModal.open && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white border border-slate-200 w-full max-w-sm rounded-2xl p-6 text-center shadow-2xl">
@@ -195,6 +254,47 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
                 className="flex-1 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 text-xs font-bold rounded-lg transition-all cursor-pointer shadow-xs"
               >
                 Sim, Pago
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Confirmar Selecionar Todos */}
+      {confirmSelectAllModal.open && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="bg-white border border-slate-200 w-full max-w-md rounded-2xl p-6 text-center shadow-2xl">
+            <div className="mx-auto w-12 h-12 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-center mb-4 text-emerald-600">
+              <Check className="w-6 h-6 stroke-[3]" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 mb-1">Confirmar Todos como Pagos?</h3>
+            <p className="text-xs text-slate-500 mb-4">
+              Deseja marcar <strong>{confirmSelectAllModal.count} pagamento(s)</strong> {confirmSelectAllModal.day ? `do Dia ${confirmSelectAllModal.day}` : 'do filtro selecionado'} de <strong>{monthNames[month]} de {year}</strong> como pagos?
+            </p>
+
+            <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-48 overflow-y-auto text-left text-xs space-y-1.5 mb-6">
+              {confirmSelectAllModal.items.map((it, idx) => (
+                <div key={idx} className="flex items-center justify-between text-slate-700 py-1 border-b border-slate-100 last:border-0">
+                  <span className="truncate font-medium">{it.description}</span>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0 ml-2">
+                    Dia {it.day}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => setConfirmSelectAllModal({ open: false, day: null, count: 0, items: [] })}
+                className="flex-1 py-2.5 bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-200 transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmSelectAll}
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition-all cursor-pointer shadow-md shadow-emerald-600/20"
+              >
+                Sim, Confirmar Todos
               </button>
             </div>
           </div>
@@ -467,6 +567,42 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
                 </div>
               );
             })}
+          </div>
+
+          {/* Botão Selecionar Todos Abaixo dos Pagamentos */}
+          <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 pt-5 border-t border-slate-200">
+            <div className="text-xs text-slate-500 font-medium">
+              {pendingNotifications.length > 0 ? (
+                <span>
+                  <strong className="text-slate-900 font-bold">{pendingNotifications.length}</strong> de <strong className="text-slate-900 font-bold">{filteredNotifications.length}</strong> pagamentos pendentes {selectedDayFilter ? `no Dia ${selectedDayFilter}` : 'neste filtro'}.
+                </span>
+              ) : (
+                <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
+                  <Check className="w-4 h-4 text-emerald-600" />
+                  Todos os {filteredNotifications.length} pagamentos do período estão confirmados!
+                </span>
+              )}
+            </div>
+
+            <button
+              onClick={initiateSelectAll}
+              disabled={pendingNotifications.length === 0}
+              className={`w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm ${
+                pendingNotifications.length > 0
+                  ? 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white shadow-emerald-600/20 cursor-pointer'
+                  : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+              }`}
+              title={
+                pendingNotifications.length > 0
+                  ? `Marcar todos os ${pendingNotifications.length} pagamentos pendentes como pagos`
+                  : 'Nenhum pagamento pendente para confirmar'
+              }
+            >
+              <Check className="w-4 h-4 stroke-[3]" />
+              <span>
+                Selecionar Todos {selectedDayFilter ? `(Dia ${selectedDayFilter})` : '(Todos)'}
+              </span>
+            </button>
           </div>
         </div>
       </div>

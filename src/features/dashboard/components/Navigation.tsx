@@ -31,11 +31,19 @@ export const Navigation = ({
   selectedMonth,
   onMonthChange
 }: NavigationProps) => {
+  const formatLocalYYYYMMDD = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
   const handlePreviousDate = () => {
     if (filterMode === 'day' && selectedDate) {
-      const date = new Date(selectedDate);
+      const [year, month, day] = selectedDate.split('-').map(Number);
+      const date = new Date(year, month - 1, day);
       date.setDate(date.getDate() - 1);
-      onDateChange(date.toISOString().split('T')[0]);
+      onDateChange(formatLocalYYYYMMDD(date));
     } else if (filterMode === 'month' && selectedMonth) {
       const [year, month] = selectedMonth.split('-').map(Number);
       const date = new Date(year, month - 1, 1);
@@ -46,9 +54,10 @@ export const Navigation = ({
 
   const handleNextDate = () => {
     if (filterMode === 'day' && selectedDate) {
-      const date = new Date(selectedDate);
+      const [year, month, day] = selectedDate.split('-').map(Number);
+      const date = new Date(year, month - 1, day);
       date.setDate(date.getDate() + 1);
-      onDateChange(date.toISOString().split('T')[0]);
+      onDateChange(formatLocalYYYYMMDD(date));
     } else if (filterMode === 'month' && selectedMonth) {
       const [year, month] = selectedMonth.split('-').map(Number);
       const date = new Date(year, month - 1, 1);

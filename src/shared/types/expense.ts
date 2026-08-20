@@ -6,9 +6,15 @@ export interface Expense {
   category: string;
   amount: number;
   quantity: number;
-  notes?: string;
+  notes?: string | undefined;
   employeeName: string;
-  originalTotal?: number | null;
+  originalTotal?: number | null | undefined;
+  receiptUrl?: string | null | undefined; // Foto/anexo do comprovante ou nota fiscal
+  deleted?: boolean | undefined; // Soft delete
+  deletedAt?: string | null | undefined;
+  deletedBy?: string | null | undefined;
+  deleteReason?: string | null | undefined;
+  editReason?: string | null | undefined;
   createdAt?: any;
   updatedAt?: any;
 }
@@ -47,4 +53,4 @@ export interface StoreSplit {
 
 export type GroupByMode = 'date' | 'store';
 export type FilterMode = 'day' | 'month';
-export type ViewMode = 'dashboard' | 'calendar' | 'analytics' | 'payments' | 'audit' | 'todo';
+export type ViewMode = 'dashboard' | 'calendar' | 'analytics' | 'closing' | 'payments' | 'audit' | 'todo';

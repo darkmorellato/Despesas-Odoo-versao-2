@@ -1,4 +1,4 @@
-export type AuditActionType = 'EDIT' | 'DELETE';
+export type AuditActionType = 'EDIT' | 'DELETE' | 'RESTORE';
 
 export interface AuditExpenseData {
   id?: string | undefined;
@@ -9,6 +9,7 @@ export interface AuditExpenseData {
   date: string;
   notes?: string | undefined;
   employeeName?: string | undefined;
+  receiptUrl?: string | null | undefined;
 }
 
 export interface AuditLogItem {
@@ -18,6 +19,7 @@ export interface AuditLogItem {
   userName: string;
   userEmail: string;
   expenseId: string;
+  reason?: string | undefined;
   previousData: AuditExpenseData;
   newData?: AuditExpenseData | undefined;
   createdAt?: any;

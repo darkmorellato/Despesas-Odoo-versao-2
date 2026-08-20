@@ -232,6 +232,15 @@ export const AuditManager: React.FC = () => {
 
                     {/* Content Details */}
                     <div className="mt-3.5 space-y-2.5">
+                      {item.reason && (
+                        <div className="bg-slate-100/80 border border-slate-200 px-3 py-2 rounded-xl text-xs flex items-start gap-2">
+                          <span className="text-[10px] font-bold uppercase text-slate-500 tracking-wider shrink-0 mt-0.5">
+                            Justificativa:
+                          </span>
+                          <span className="font-semibold text-slate-900">{item.reason}</span>
+                        </div>
+                      )}
+
                       {isDelete ? (
                         /* Deleted Item Info */
                         <div className="bg-rose-50/40 border border-rose-100 p-3.5 rounded-xl">
