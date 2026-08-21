@@ -7,6 +7,13 @@ import type { FixedNotification } from '@/shared/types';
 
 interface FixedPaymentsManagerProps {
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  payments?: FixedNotification[];
+  addPayment?: (payment: Omit<FixedNotification, 'id'>) => Promise<void>;
+  updatePayment?: (id: string, payment: Partial<FixedNotification>) => Promise<void>;
+  deletePayment?: (id: string) => Promise<void>;
+  getPaymentsByDay?: (day: number) => FixedNotification[];
+  getUniqueDays?: () => number[];
+  syncStatus?: 'synced' | 'syncing' | 'error' | 'offline';
 }
 
 const MONTHS = [
@@ -26,9 +33,26 @@ const MONTHS = [
 
 const PAYMENT_DAYS = [5, 10, 15, 20, 25, 27, 29];
 
-export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({ showToast }) => {
+export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({ 
+  showToast,
+  payments: propPayments,
+  addPayment: propAddPayment,
+  updatePayment: propUpdatePayment,
+  deletePayment: propDeletePayment,
+  getPaymentsByDay: propGetPaymentsByDay,
+  getUniqueDays: propGetUniqueDays,
+  syncStatus: propSyncStatus
+}) => {
   const { user } = useAuth();
-  const { payments, addPayment, updatePayment, deletePayment, getPaymentsByDay, getUniqueDays, syncStatus } = useFixedPayments(user);
+  // Se os dados já foram passados por props (ex: App.tsx), evita abrir um 2º listener no Firestore
+  const hookData = useFixedPayments(propPayments ? null : user);
+  const payments = propPayments ?? hookData.payments;
+  const addPayment = propAddPayment ?? hookData.addPayment;
+  const updatePayment = propUpdatePayment ?? hookData.updatePayment;
+  const deletePayment = propDeletePayment ?? hookData.deletePayment;
+  const getPaymentsByDay = propGetPaymentsByDay ?? hookData.getPaymentsByDay;
+  const getUniqueDays = propGetUniqueDays ?? hookData.getUniqueDays;
+  const syncStatus = propSyncStatus ?? hookData.syncStatus;
   const [expandedDays, setExpandedDays] = useState<Set<number>>(new Set());
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPayment, setEditingPayment] = useState<FixedNotification | null>(null);

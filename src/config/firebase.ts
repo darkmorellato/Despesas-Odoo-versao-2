@@ -1,6 +1,22 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, doc, query, orderBy, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { 
+  initializeFirestore, 
+  getFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager, 
+  collection, 
+  doc, 
+  query, 
+  orderBy, 
+  limit,
+  onSnapshot, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  addDoc, 
+  serverTimestamp 
+} from 'firebase/firestore';
 import { getAnalytics } from 'firebase/analytics';
 import { CHECKLIST_DOC_ID } from './constants';
 
@@ -20,7 +36,19 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-export const db = getFirestore(app);
+// Initialize Firestore with IndexedDB persistent local cache
+let firestoreDb: ReturnType<typeof getFirestore>;
+try {
+  firestoreDb = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  });
+} catch {
+  firestoreDb = getFirestore(app);
+}
+
+export const db = firestoreDb;
 
 // Initialize Analytics (only in browser)
 if (typeof window !== 'undefined') {
@@ -28,7 +56,21 @@ if (typeof window !== 'undefined') {
 }
 
 // Re-export Firebase functions
-export { signInAnonymously, onAuthStateChanged, collection, doc, query, orderBy, onSnapshot, setDoc, updateDoc, deleteDoc, addDoc, serverTimestamp };
+export { 
+  signInAnonymously, 
+  onAuthStateChanged, 
+  collection, 
+  doc, 
+  query, 
+  orderBy, 
+  limit,
+  onSnapshot, 
+  setDoc, 
+  updateDoc, 
+  deleteDoc, 
+  addDoc, 
+  serverTimestamp 
+};
 
 export const getFirebaseRefs = () => {
   let expensesRef: any;

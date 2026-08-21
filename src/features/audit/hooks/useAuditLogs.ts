@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '@/config/firebase';
-import { collection, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import type { AuditLogItem } from '../types';
 import { getCachedAuditLogs } from '../services/auditService';
 
@@ -14,7 +14,7 @@ export const useAuditLogs = () => {
     try {
       const dataDoc = doc(db, 'miplace-despesas', 'data-team_data');
       const auditColl = collection(dataDoc, 'audit_logs_v1');
-      const q = query(auditColl, orderBy('actionDate', 'desc'));
+      const q = query(auditColl, orderBy('actionDate', 'desc'), limit(100));
 
       unsubscribe = onSnapshot(
         q,

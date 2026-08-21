@@ -92,7 +92,15 @@ export default function App() {
   const { user, syncStatus, error: authError } = useAuth();
   const { expenses, isLoading: expensesLoading, addExpense, updateExpense, deleteExpense, canDelete } = useExpenses(user);
   const { checks, isLoading: checksLoading, toggleCheck, getPendingPayments, syncError } = useCalendar(user);
-  const { payments: fixedPayments } = useFixedPayments(user);
+  const { 
+    payments: fixedPayments, 
+    addPayment: addFixedPayment, 
+    updatePayment: updateFixedPayment, 
+    deletePayment: deleteFixedPayment, 
+    getPaymentsByDay: getFixedPaymentsByDay, 
+    getUniqueDays: getFixedUniqueDays, 
+    syncStatus: fixedPaymentsSyncStatus 
+  } = useFixedPayments(user);
   const { toasts, showToast, removeToast } = useToast();
   const { saveToComputer, handleRestoreFile, exportToCSV } = useBackup();
 
@@ -1208,6 +1216,13 @@ export default function App() {
             <Suspense fallback={<LoadingSpinner />}>
               <FixedPaymentsManager
                 showToast={showToast}
+                payments={fixedPayments}
+                addPayment={addFixedPayment}
+                updatePayment={updateFixedPayment}
+                deletePayment={deleteFixedPayment}
+                getPaymentsByDay={getFixedPaymentsByDay}
+                getUniqueDays={getFixedUniqueDays}
+                syncStatus={fixedPaymentsSyncStatus}
               />
             </Suspense>
           ) : currentView === 'audit' && isDarkAdmin ? (

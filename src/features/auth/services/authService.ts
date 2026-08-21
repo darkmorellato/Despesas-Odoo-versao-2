@@ -21,11 +21,21 @@ export const INITIAL_DATABASE_USERS = [
 ];
 
 const AUTH_STORAGE_KEY = 'miplace_auth_session_user';
+const USERS_SEEDED_KEY = 'miplace_system_users_seeded_v1';
 
 /**
  * Garante que os usuários padrão existam no banco de dados Firestore
  */
 export const seedInitialUsersIfNotExist = async (): Promise<void> => {
+  // Evita leituras repetidas desnecessárias no Firestore se já verificado neste cliente
+  try {
+    if (localStorage.getItem(USERS_SEEDED_KEY)) {
+      return;
+    }
+  } catch {
+    // Continua se localStorage não estiver disponível
+  }
+
   try {
     const dataDoc = doc(db, 'miplace-despesas', 'data-team_data');
     const usersColl = collection(dataDoc, 'system_users_v1');
@@ -43,6 +53,7 @@ export const seedInitialUsersIfNotExist = async (): Promise<void> => {
         });
       }
     }
+    localStorage.setItem(USERS_SEEDED_KEY, 'true');
   } catch (err) {
     console.warn('Aviso: Não foi possível sincronizar usuários iniciais com o Firestore imediatamente:', err);
   }

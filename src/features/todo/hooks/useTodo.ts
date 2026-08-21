@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { db } from '@/config/firebase';
-import { collection, doc, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import type { TodoItem, TodoRepeat, TodoStep } from '../types';
 import { getCachedTodos, saveCachedTodos, addTodoDoc, updateTodoDoc, deleteTodoDoc } from '../services/todoService';
 import { playTodoAlertSound, playSynthesizedBeep } from '@/shared/utils/audio';
@@ -49,7 +49,7 @@ export const useTodo = (employeeName: string, userEmail: string) => {
     try {
       const dataDoc = doc(db, 'miplace-despesas', 'data-team_data');
       const todoColl = collection(dataDoc, 'todo_tasks_v1');
-      const q = query(todoColl, orderBy('createdAt', 'desc'));
+      const q = query(todoColl, orderBy('createdAt', 'desc'), limit(150));
 
       unsubscribe = onSnapshot(
         q,
