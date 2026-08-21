@@ -51,8 +51,11 @@ export const addTodoDoc = async (todo: Omit<TodoItem, 'id'>): Promise<string> =>
   try {
     const dataDoc = doc(db, 'miplace-despesas', 'data-team_data');
     const todoColl = collection(dataDoc, 'todo_tasks_v1');
+    const titleVal = todo.title || (todo as any).description || (todo as any).text || (todo as any).name || 'Tarefa';
     const payload = sanitizeForFirestore({
       ...todo,
+      title: titleVal,
+      description: titleVal,
       createdAt: serverTimestamp()
     }, false);
     const docRef = await addDoc(todoColl, payload);
@@ -68,8 +71,10 @@ export const updateTodoDoc = async (id: string, updates: Partial<TodoItem>): Pro
     const dataDoc = doc(db, 'miplace-despesas', 'data-team_data');
     const todoColl = collection(dataDoc, 'todo_tasks_v1');
     const taskRef = doc(todoColl, id);
+    const titleVal = updates.title ?? (updates as any).description ?? (updates as any).text ?? (updates as any).name;
     const payload = sanitizeForFirestore({
       ...updates,
+      ...(titleVal !== undefined ? { title: titleVal, description: titleVal } : {}),
       updatedAt: serverTimestamp()
     }, true);
     await setDoc(taskRef, payload, { merge: true });

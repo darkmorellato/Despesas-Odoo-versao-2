@@ -59,7 +59,7 @@ export const useTodo = (employeeName: string, userEmail: string) => {
             const data = docSnap.data();
             fetched.push({
               id: docSnap.id,
-              title: data.title || '',
+              title: data.title || data.description || data.text || data.name || data.nome || 'Tarefa sem título',
               completed: !!data.completed,
               important: !!data.important,
               dueDate: data.dueDate || undefined,

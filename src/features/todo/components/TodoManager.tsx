@@ -709,7 +709,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
                             task.completed ? 'text-slate-400 line-through' : 'text-slate-900'
                           }`}
                         >
-                          {task.title}
+                          {task.title || (task as any).description || (task as any).text || (task as any).name || (task as any).nome || 'Tarefa sem título'}
                         </p>
 
                         {/* Badges / Chips */}
@@ -900,8 +900,9 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
                 </button>
                 <input
                   type="text"
-                  value={activeTask.title}
+                  value={activeTask.title || (activeTask as any).description || (activeTask as any).text || (activeTask as any).name || ''}
                   onChange={(e) => updateTodo(activeTask.id, { title: e.target.value })}
+                  placeholder="Título da tarefa..."
                   className={`w-full text-base font-bold bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-amber-400 rounded px-1 text-slate-900 ${
                     activeTask.completed ? 'line-through text-slate-400' : ''
                   }`}

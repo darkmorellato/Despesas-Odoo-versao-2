@@ -465,7 +465,7 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
                   </div>
                   <div>
                     <h3 className={`text-base font-bold text-slate-900 ${selectedTodoModal.completed ? 'line-through text-slate-400' : ''}`}>
-                      {selectedTodoModal.title}
+                      {selectedTodoModal.title || (selectedTodoModal as any).description || (selectedTodoModal as any).text || (selectedTodoModal as any).name || 'Tarefa sem título'}
                     </h3>
                     <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 ${
                       selectedTodoModal.completed
@@ -666,7 +666,7 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
                         >
                           <div className="flex items-center gap-1 min-w-0 truncate">
                             <span className="text-[10px] shrink-0">{todo.completed ? '✅' : '📋'}</span>
-                            <span className="truncate">{todo.title}</span>
+                            <span className="truncate">{todo.title || (todo as any).description || (todo as any).text || (todo as any).name || 'Tarefa sem título'}</span>
                           </div>
                           {todo.dueTime && (
                             <span className="text-[9px] font-mono opacity-80 shrink-0 hidden sm:inline">{todo.dueTime}</span>
@@ -966,7 +966,7 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
                               <p className={`font-medium text-xs truncate ${
                                 isDone ? "text-slate-400 line-through" : "text-slate-900 font-semibold"
                               }`}>
-                                {todo.title}
+                                {todo.title || (todo as any).description || (todo as any).text || (todo as any).name || 'Tarefa sem título'}
                               </p>
                               {todo.important && <Star className="w-3 h-3 text-amber-500 fill-amber-400 shrink-0" />}
                             </div>
