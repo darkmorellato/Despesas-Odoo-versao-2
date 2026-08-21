@@ -11,7 +11,8 @@ vi.mock('firebase/firestore', () => ({
   addDoc: vi.fn().mockResolvedValue({ id: 'test_todo_id' }),
   setDoc: vi.fn().mockResolvedValue(undefined),
   deleteDoc: vi.fn().mockResolvedValue(undefined),
-  serverTimestamp: vi.fn()
+  serverTimestamp: vi.fn(),
+  deleteField: vi.fn()
 }));
 
 describe('todoService', () => {

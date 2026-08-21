@@ -49,7 +49,7 @@ export const useTodo = (employeeName: string, userEmail: string) => {
     try {
       const dataDoc = doc(db, 'miplace-despesas', 'data-team_data');
       const todoColl = collection(dataDoc, 'todo_tasks_v1');
-      const q = query(todoColl, orderBy('createdAt', 'desc'), limit(150));
+      const q = query(todoColl, limit(300));
 
       unsubscribe = onSnapshot(
         q,
@@ -59,25 +59,35 @@ export const useTodo = (employeeName: string, userEmail: string) => {
             const data = docSnap.data();
             fetched.push({
               id: docSnap.id,
-              title: data.title,
+              title: data.title || '',
               completed: !!data.completed,
               important: !!data.important,
-              dueDate: data.dueDate,
-              dueTime: data.dueTime,
+              dueDate: data.dueDate || undefined,
+              dueTime: data.dueTime || undefined,
               repeat: data.repeat || 'none',
-              notes: data.notes,
+              notes: data.notes || undefined,
               steps: data.steps || [],
-              assignedTo: data.assignedTo,
-              assignedToName: data.assignedToName,
+              assignedTo: data.assignedTo || undefined,
+              assignedToName: data.assignedToName || undefined,
               employeeName: data.employeeName || 'Funcionário',
               userEmail: data.userEmail || '',
-              createdAt: data.createdAt ? new Date(data.createdAt.seconds * 1000).toISOString() : new Date().toISOString(),
-              completedAt: data.completedAt
+              createdAt: data.createdAt?.seconds
+                ? new Date(data.createdAt.seconds * 1000).toISOString()
+                : (typeof data.createdAt === 'string' ? data.createdAt : new Date().toISOString()),
+              completedAt: data.completedAt || undefined
             });
           });
 
-          setTodos(fetched);
-          saveCachedTodos(fetched);
+          // Ordenação por data de criação decrescente
+          fetched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+          // Preserva tarefas locais que ainda não sincronizaram
+          setTodos((prevTodos) => {
+            const localPending = prevTodos.filter(p => p.id.startsWith('local_') || p.id.startsWith('temp_'));
+            const merged = [...localPending, ...fetched.filter(f => !localPending.some(p => p.id === f.id))];
+            saveCachedTodos(merged);
+            return merged;
+          });
           setIsLoading(false);
         },
         (error) => {
@@ -149,10 +159,10 @@ export const useTodo = (employeeName: string, userEmail: string) => {
       title: title.trim(),
       completed: false,
       important,
-      dueDate,
-      dueTime,
+      dueDate: dueDate || undefined,
+      dueTime: dueTime || undefined,
       repeat,
-      notes,
+      notes: notes || undefined,
       steps: steps || [],
       assignedTo: assignedTo?.trim() || undefined,
       assignedToName: assignedToName?.trim() || undefined,
@@ -161,9 +171,11 @@ export const useTodo = (employeeName: string, userEmail: string) => {
       createdAt: new Date().toISOString()
     };
 
-    const updated = [newTask, ...todos];
-    setTodos(updated);
-    saveCachedTodos(updated);
+    setTodos((prev) => {
+      const updated = [newTask, ...prev];
+      saveCachedTodos(updated);
+      return updated;
+    });
 
     playSynthesizedBeep();
 
@@ -171,10 +183,10 @@ export const useTodo = (employeeName: string, userEmail: string) => {
       title: title.trim(),
       completed: false,
       important,
-      dueDate,
-      dueTime,
+      dueDate: dueDate || undefined,
+      dueTime: dueTime || undefined,
       repeat,
-      notes,
+      notes: notes || undefined,
       steps: steps || [],
       assignedTo: assignedTo?.trim() || undefined,
       assignedToName: assignedToName?.trim() || undefined,
@@ -184,30 +196,39 @@ export const useTodo = (employeeName: string, userEmail: string) => {
     });
 
     if (realId && realId !== tempId) {
-      setTodos((prev) => prev.map((t) => (t.id === tempId ? { ...t, id: realId } : t)));
+      setTodos((prev) => {
+        const updated = prev.map((t) => (t.id === tempId ? { ...t, id: realId } : t));
+        saveCachedTodos(updated);
+        return updated;
+      });
     }
-  }, [todos, employeeName, userEmail]);
+  }, [employeeName, userEmail]);
 
   // Alternar Concluído (com suporte a tarefas recorrentes!)
   const toggleComplete = useCallback(async (id: string) => {
-    const target = todos.find((t) => t.id === id);
-    if (!target) return;
+    let target: TodoItem | undefined;
+    let nextCompleted = false;
+    let completedAt: string | undefined;
 
-    const nextCompleted = !target.completed;
-    const completedAt = nextCompleted ? new Date().toISOString() : undefined;
+    setTodos((prev) => {
+      target = prev.find((t) => t.id === id);
+      if (!target) return prev;
+      nextCompleted = !target.completed;
+      completedAt = nextCompleted ? new Date().toISOString() : undefined;
+      const updated = prev.map((t) =>
+        t.id === id ? { ...t, completed: nextCompleted, completedAt } : t
+      );
+      saveCachedTodos(updated);
+      return updated;
+    });
+
+    if (!target) return;
 
     if (nextCompleted) {
       playTodoAlertSound();
     } else {
       playSynthesizedBeep();
     }
-
-    const updated = todos.map((t) =>
-      t.id === id ? { ...t, completed: nextCompleted, completedAt } : t
-    );
-
-    setTodos(updated);
-    saveCachedTodos(updated);
 
     await updateTodoDoc(id, { completed: nextCompleted, completedAt });
 
@@ -227,48 +248,51 @@ export const useTodo = (employeeName: string, userEmail: string) => {
         resetSteps
       );
     }
-  }, [todos, addTodo]);
+  }, [addTodo]);
 
   // Alternar Estrela de Importante
   const toggleImportant = useCallback(async (id: string) => {
-    const target = todos.find((t) => t.id === id);
-    if (!target) return;
-
-    const nextImportant = !target.important;
-    const updated = todos.map((t) =>
-      t.id === id ? { ...t, important: nextImportant } : t
-    );
-
-    setTodos(updated);
-    saveCachedTodos(updated);
+    let nextImportant = false;
+    setTodos((prev) => {
+      const target = prev.find((t) => t.id === id);
+      if (!target) return prev;
+      nextImportant = !target.important;
+      const updated = prev.map((t) =>
+        t.id === id ? { ...t, important: nextImportant } : t
+      );
+      saveCachedTodos(updated);
+      return updated;
+    });
 
     playSynthesizedBeep();
-
     await updateTodoDoc(id, { important: nextImportant });
-  }, [todos]);
+  }, []);
 
   // Remover tarefa
   const deleteTodo = useCallback(async (id: string) => {
-    const updated = todos.filter((t) => t.id !== id);
-    setTodos(updated);
-    saveCachedTodos(updated);
+    setTodos((prev) => {
+      const updated = prev.filter((t) => t.id !== id);
+      saveCachedTodos(updated);
+      return updated;
+    });
 
     await deleteTodoDoc(id);
-  }, [todos]);
+  }, []);
 
   // Editar tarefa
   const updateTodo = useCallback(async (id: string, updates: Partial<TodoItem>) => {
-    const updated = todos.map((t) => (t.id === id ? { ...t, ...updates } : t));
-    setTodos(updated);
-    saveCachedTodos(updated);
+    setTodos((prev) => {
+      const updated = prev.map((t) => (t.id === id ? { ...t, ...updates } : t));
+      saveCachedTodos(updated);
+      return updated;
+    });
 
     await updateTodoDoc(id, updates);
-  }, [todos]);
+  }, []);
 
   // Adicionar etapa/subtarefa
   const addStep = useCallback(async (todoId: string, stepTitle: string) => {
-    const target = todos.find(t => t.id === todoId);
-    if (!target || !stepTitle.trim()) return;
+    if (!stepTitle.trim()) return;
 
     const newStep: TodoStep = {
       id: `step_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
@@ -276,32 +300,54 @@ export const useTodo = (employeeName: string, userEmail: string) => {
       completed: false
     };
 
-    const updatedSteps = [...(target.steps || []), newStep];
-    await updateTodo(todoId, { steps: updatedSteps });
+    let updatedSteps: TodoStep[] = [];
+    setTodos((prev) => {
+      const target = prev.find(t => t.id === todoId);
+      if (!target) return prev;
+      updatedSteps = [...(target.steps || []), newStep];
+      const updated = prev.map(t => (t.id === todoId ? { ...t, steps: updatedSteps } : t));
+      saveCachedTodos(updated);
+      return updated;
+    });
+
+    await updateTodoDoc(todoId, { steps: updatedSteps });
     playSynthesizedBeep();
-  }, [todos, updateTodo]);
+  }, []);
 
   // Alternar conclusão de etapa
   const toggleStep = useCallback(async (todoId: string, stepId: string) => {
-    const target = todos.find(t => t.id === todoId);
-    if (!target || !target.steps) return;
+    let updatedSteps: TodoStep[] = [];
+    setTodos((prev) => {
+      const target = prev.find(t => t.id === todoId);
+      if (!target || !target.steps) return prev;
 
-    const updatedSteps = target.steps.map(s =>
-      s.id === stepId ? { ...s, completed: !s.completed } : s
-    );
+      updatedSteps = target.steps.map(s =>
+        s.id === stepId ? { ...s, completed: !s.completed } : s
+      );
+      const updated = prev.map(t => (t.id === todoId ? { ...t, steps: updatedSteps } : t));
+      saveCachedTodos(updated);
+      return updated;
+    });
 
-    await updateTodo(todoId, { steps: updatedSteps });
+    await updateTodoDoc(todoId, { steps: updatedSteps });
     playSynthesizedBeep();
-  }, [todos, updateTodo]);
+  }, []);
 
   // Excluir etapa
   const deleteStep = useCallback(async (todoId: string, stepId: string) => {
-    const target = todos.find(t => t.id === todoId);
-    if (!target || !target.steps) return;
+    let updatedSteps: TodoStep[] = [];
+    setTodos((prev) => {
+      const target = prev.find(t => t.id === todoId);
+      if (!target || !target.steps) return prev;
 
-    const updatedSteps = target.steps.filter(s => s.id !== stepId);
-    await updateTodo(todoId, { steps: updatedSteps });
-  }, [todos, updateTodo]);
+      updatedSteps = target.steps.filter(s => s.id !== stepId);
+      const updated = prev.map(t => (t.id === todoId ? { ...t, steps: updatedSteps } : t));
+      saveCachedTodos(updated);
+      return updated;
+    });
+
+    await updateTodoDoc(todoId, { steps: updatedSteps });
+  }, []);
 
   return {
     todos,

@@ -1,8 +1,33 @@
 import { db } from '@/config/firebase';
-import { collection, doc, addDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, addDoc, setDoc, deleteDoc, serverTimestamp, deleteField } from 'firebase/firestore';
 import type { TodoItem } from '../types';
 
 const STORAGE_KEY = 'miplace_todo_tasks_cache';
+
+/**
+ * Remove chaves undefined ou converte em deleteField() para compatibilidade estrita com Firestore
+ */
+const sanitizeForFirestore = (obj: Record<string, any>, isUpdate = false): Record<string, any> => {
+  const clean: Record<string, any> = {};
+  for (const [key, val] of Object.entries(obj)) {
+    if (val === undefined) {
+      if (isUpdate) {
+        clean[key] = deleteField();
+      }
+    } else if (Array.isArray(val)) {
+      clean[key] = val.map((item) =>
+        item !== null && typeof item === 'object' && !(item instanceof Date)
+          ? sanitizeForFirestore(item, isUpdate)
+          : item
+      );
+    } else if (val !== null && typeof val === 'object' && !(val instanceof Date) && typeof val.toMillis !== 'function') {
+      clean[key] = sanitizeForFirestore(val, isUpdate);
+    } else {
+      clean[key] = val;
+    }
+  }
+  return clean;
+};
 
 export const getCachedTodos = (): TodoItem[] => {
   try {
@@ -26,10 +51,11 @@ export const addTodoDoc = async (todo: Omit<TodoItem, 'id'>): Promise<string> =>
   try {
     const dataDoc = doc(db, 'miplace-despesas', 'data-team_data');
     const todoColl = collection(dataDoc, 'todo_tasks_v1');
-    const docRef = await addDoc(todoColl, {
+    const payload = sanitizeForFirestore({
       ...todo,
       createdAt: serverTimestamp()
-    });
+    }, false);
+    const docRef = await addDoc(todoColl, payload);
     return docRef.id;
   } catch (e) {
     console.warn('Erro ao adicionar tarefa no Firestore, usando salvamento local:', e);
@@ -42,10 +68,11 @@ export const updateTodoDoc = async (id: string, updates: Partial<TodoItem>): Pro
     const dataDoc = doc(db, 'miplace-despesas', 'data-team_data');
     const todoColl = collection(dataDoc, 'todo_tasks_v1');
     const taskRef = doc(todoColl, id);
-    await setDoc(taskRef, {
+    const payload = sanitizeForFirestore({
       ...updates,
       updatedAt: serverTimestamp()
-    }, { merge: true });
+    }, true);
+    await setDoc(taskRef, payload, { merge: true });
   } catch (e) {
     console.warn('Erro ao atualizar tarefa no Firestore:', e);
   }
