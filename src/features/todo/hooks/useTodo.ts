@@ -37,8 +37,20 @@ export const getNextRecurrenceDate = (currentDateStr?: string, repeat?: TodoRepe
   return `${year}-${month}-${day}`;
 };
 
+export const deduplicateTodos = (items: TodoItem[]): TodoItem[] => {
+  const seenIds = new Set<string>();
+  const clean: TodoItem[] = [];
+
+  for (const item of items) {
+    if (!item.id || seenIds.has(item.id)) continue;
+    seenIds.add(item.id);
+    clean.push(item);
+  }
+  return clean;
+};
+
 export const useTodo = (employeeName: string, userEmail: string) => {
-  const [todos, setTodos] = useState<TodoItem[]>(() => getCachedTodos());
+  const [todos, setTodos] = useState<TodoItem[]>(() => deduplicateTodos(getCachedTodos()));
   const [isLoading, setIsLoading] = useState(true);
   const [notifiedTasks, setNotifiedTasks] = useState<Set<string>>(new Set());
 
@@ -81,24 +93,20 @@ export const useTodo = (employeeName: string, userEmail: string) => {
           // Ordenação por data de criação decrescente
           fetched.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-          // Preserva tarefas locais que ainda não sincronizaram
-          setTodos((prevTodos) => {
-            const localPending = prevTodos.filter(p => p.id.startsWith('local_') || p.id.startsWith('temp_'));
-            const merged = [...localPending, ...fetched.filter(f => !localPending.some(p => p.id === f.id))];
-            saveCachedTodos(merged);
-            return merged;
-          });
+          const cleanList = deduplicateTodos(fetched);
+          setTodos(cleanList);
+          saveCachedTodos(cleanList);
           setIsLoading(false);
         },
         (error) => {
           console.warn('Falha na escuta do Firestore para To-Do, usando cache local:', error);
-          setTodos(getCachedTodos());
+          setTodos(deduplicateTodos(getCachedTodos()));
           setIsLoading(false);
         }
       );
     } catch (e) {
       console.warn('Erro ao conectar ao Firestore To-Do:', e);
-      setTodos(getCachedTodos());
+      setTodos(deduplicateTodos(getCachedTodos()));
       setIsLoading(false);
     }
 
@@ -151,36 +159,13 @@ export const useTodo = (employeeName: string, userEmail: string) => {
     assignedToName?: string | undefined,
     steps?: TodoStep[] | undefined
   ) => {
-    if (!title.trim()) return;
-
-    const tempId = `temp_${Date.now()}`;
-    const newTask: TodoItem = {
-      id: tempId,
-      title: title.trim(),
-      completed: false,
-      important,
-      dueDate: dueDate || undefined,
-      dueTime: dueTime || undefined,
-      repeat,
-      notes: notes || undefined,
-      steps: steps || [],
-      assignedTo: assignedTo?.trim() || undefined,
-      assignedToName: assignedToName?.trim() || undefined,
-      employeeName,
-      userEmail,
-      createdAt: new Date().toISOString()
-    };
-
-    setTodos((prev) => {
-      const updated = [newTask, ...prev];
-      saveCachedTodos(updated);
-      return updated;
-    });
+    const trimmedTitle = title.trim();
+    if (!trimmedTitle) return;
 
     playSynthesizedBeep();
 
-    const realId = await addTodoDoc({
-      title: title.trim(),
+    await addTodoDoc({
+      title: trimmedTitle,
       completed: false,
       important,
       dueDate: dueDate || undefined,
@@ -194,14 +179,6 @@ export const useTodo = (employeeName: string, userEmail: string) => {
       userEmail,
       createdAt: new Date().toISOString()
     });
-
-    if (realId && realId !== tempId) {
-      setTodos((prev) => {
-        const updated = prev.map((t) => (t.id === tempId ? { ...t, id: realId } : t));
-        saveCachedTodos(updated);
-        return updated;
-      });
-    }
   }, [employeeName, userEmail]);
 
   // Alternar Concluído (com suporte a tarefas recorrentes!)

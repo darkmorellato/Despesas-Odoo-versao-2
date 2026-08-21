@@ -66,6 +66,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
   const [newAssignedTo, setNewAssignedTo] = useState('');
   const [newAssignedToName, setNewAssignedToName] = useState('');
   const [showQuickOptions, setShowQuickOptions] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Detail panel step input
   const [newStepTitle, setNewStepTitle] = useState('');
@@ -154,46 +155,51 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
   // Add Task Submit
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (isSubmitting || !newTitle.trim()) return;
 
-    let targetEmail = newAssignedTo.trim();
-    if (isTypingCustomEmail && customEmailInput.trim()) {
-      targetEmail = customEmailInput.trim();
-    }
+    setIsSubmitting(true);
+    try {
+      let targetEmail = newAssignedTo.trim();
+      if (isTypingCustomEmail && customEmailInput.trim()) {
+        targetEmail = customEmailInput.trim();
+      }
 
-    if (targetEmail && targetEmail.includes('@')) {
-      saveContact(targetEmail);
-      setSavedContacts(getSavedContacts());
-    }
+      if (targetEmail && targetEmail.includes('@')) {
+        saveContact(targetEmail);
+        setSavedContacts(getSavedContacts());
+      }
 
-    const assignedDate = newDueDate || (activeFilter === 'today' ? todayStr : undefined);
+      const assignedDate = newDueDate || (activeFilter === 'today' ? todayStr : undefined);
 
-    await addTodo(
-      newTitle,
-      assignedDate,
-      newDueTime || undefined,
-      newImportant,
-      '',
-      newRepeat,
-      targetEmail || undefined,
-      newAssignedToName || targetEmail || undefined
-    );
+      await addTodo(
+        newTitle,
+        assignedDate,
+        newDueTime || undefined,
+        newImportant,
+        '',
+        newRepeat,
+        targetEmail || undefined,
+        newAssignedToName || targetEmail || undefined
+      );
 
-    setNewTitle('');
-    setNewDueDate('');
-    setNewDueTime('');
-    setNewRepeat('none');
-    setNewImportant(false);
-    setNewAssignedTo('');
-    setNewAssignedToName('');
-    setCustomEmailInput('');
-    setIsTypingCustomEmail(false);
-    setShowQuickOptions(false);
+      setNewTitle('');
+      setNewDueDate('');
+      setNewDueTime('');
+      setNewRepeat('none');
+      setNewImportant(false);
+      setNewAssignedTo('');
+      setNewAssignedToName('');
+      setCustomEmailInput('');
+      setIsTypingCustomEmail(false);
+      setShowQuickOptions(false);
 
-    if (assignedDate && assignedDate !== todayStr) {
-      showToast(`Tarefa adicionada e agendada para ${formatDateBR(assignedDate)}! 📅`, 'success');
-    } else {
-      showToast('Tarefa adicionada com sucesso! ✨', 'success');
+      if (assignedDate && assignedDate !== todayStr) {
+        showToast(`Tarefa adicionada e agendada para ${formatDateBR(assignedDate)}! 📅`, 'success');
+      } else {
+        showToast('Tarefa adicionada com sucesso! ✨', 'success');
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -528,10 +534,10 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
                 />
                 <button
                   type="submit"
-                  disabled={!newTitle.trim()}
+                  disabled={isSubmitting || !newTitle.trim()}
                   className="px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Adicionar
+                  <Plus className="w-3.5 h-3.5" /> {isSubmitting ? 'Adicionando...' : 'Adicionar'}
                 </button>
               </div>
 
