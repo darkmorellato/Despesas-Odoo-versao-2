@@ -10,16 +10,29 @@ import {
   RotateCcw,
   CheckSquare,
   ZoomIn,
-  ZoomOut
+  ZoomOut,
+  ListTodo,
+  ExternalLink,
+  Mail,
+  Star,
+  CheckCircle,
+  Circle,
+  Clock
 } from '@/shared/components/icons';
 import type { FixedNotification } from '@/shared/types';
+import type { TodoItem } from '@/features/todo/types';
+import { openGoogleCalendar, openInGmail } from '@/features/todo/utils/calendarIntegration';
+import { getCachedTodos, updateTodoDoc } from '@/features/todo/services/todoService';
+import { playTodoAlertSound, playSynthesizedBeep } from '@/shared/utils/audio';
 
-interface ExpenseCalendarProps {
+export interface ExpenseCalendarProps {
   fixedPayments: FixedNotification[];
   checkedState: Record<string, boolean>;
   onToggleCheck: (key: string, status: boolean) => void;
-  showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  showToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
   syncError?: string | null;
+  todos?: TodoItem[];
+  onToggleTodo?: (id: string) => void;
 }
 
 export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
@@ -27,7 +40,9 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
   checkedState,
   onToggleCheck,
   showToast,
-  syncError
+  syncError,
+  todos: propTodos,
+  onToggleTodo
 }) => {
   const FIXED_NOTIFICATIONS = fixedPayments;
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -64,10 +79,52 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
   });
   const [fixPassword, setFixPassword] = useState('');
 
+  // To-Do Integration State
+  const [internalTodos, setInternalTodos] = useState<TodoItem[]>(() => propTodos || getCachedTodos());
+  const [selectedTodoModal, setSelectedTodoModal] = useState<TodoItem | null>(null);
+  const [activeTab, setActiveTab] = useState<'payments' | 'todos' | 'all'>('payments');
+
+  useEffect(() => {
+    if (propTodos) {
+      setInternalTodos(propTodos);
+    }
+  }, [propTodos]);
+
+  const handleToggleTodo = useCallback(async (id: string) => {
+    if (onToggleTodo) {
+      onToggleTodo(id);
+      return;
+    }
+    const target = internalTodos.find((t) => t.id === id);
+    if (!target) return;
+    const nextCompleted = !target.completed;
+    const completedAt = nextCompleted ? new Date().toISOString() : undefined;
+    if (nextCompleted) playTodoAlertSound();
+    else playSynthesizedBeep();
+    setInternalTodos((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, completed: nextCompleted, completedAt } : t))
+    );
+    await updateTodoDoc(id, { completed: nextCompleted, completedAt });
+  }, [onToggleTodo, internalTodos]);
+
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
+
+  // Tarefas To-Do com data de vencimento dentro do mês/ano exibido
+  const monthTodos = useMemo(() => {
+    const list = propTodos || internalTodos;
+    const monthPad = String(month + 1).padStart(2, '0');
+    const monthPrefix = `${year}-${monthPad}`;
+    return list.filter((t) => t.dueDate && t.dueDate.startsWith(monthPrefix));
+  }, [propTodos, internalTodos, year, month]);
+
+  const filteredMonthTodos = useMemo(() => {
+    if (selectedDayFilter === null) return monthTodos;
+    const targetDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDayFilter).padStart(2, '0')}`;
+    return monthTodos.filter((t) => t.dueDate === targetDateStr);
+  }, [monthTodos, year, month, selectedDayFilter]);
 
   const handlePrevMonth = useCallback(() => {
     setCurrentDate(new Date(year, month - 1, 1));
@@ -130,11 +187,12 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
           setFixModal({ open: false, desc: null });
           setFixPassword('');
         }
+        if (selectedTodoModal) setSelectedTodoModal(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [confirmPayModal.open, confirmSelectAllModal.open, fixModal.open]);
+  }, [confirmPayModal.open, confirmSelectAllModal.open, fixModal.open, selectedTodoModal]);
 
   const getZoomStyles = () => {
     switch (zoomLevel) {
@@ -395,6 +453,132 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
           </div>
         )}
 
+        {/* Modal Detalhes Rápidos da Tarefa no Calendário */}
+        {selectedTodoModal && (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
+            <div className="bg-white border border-slate-200 w-full max-w-md rounded-2xl p-6 shadow-2xl space-y-4">
+              {/* Header */}
+              <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shrink-0">
+                    <ListTodo className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className={`text-base font-bold text-slate-900 ${selectedTodoModal.completed ? 'line-through text-slate-400' : ''}`}>
+                      {selectedTodoModal.title}
+                    </h3>
+                    <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 ${
+                      selectedTodoModal.completed
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-amber-100 text-amber-900'
+                    }`}>
+                      {selectedTodoModal.completed ? '✅ Concluída' : '⏳ Pendente'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSelectedTodoModal(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Detalhes */}
+              <div className="space-y-2.5 text-xs">
+                {selectedTodoModal.dueDate && (
+                  <div className="flex items-center gap-2 text-slate-700 bg-slate-50 p-2 rounded-lg border border-slate-200/70">
+                    <Calendar className="w-4 h-4 text-cyan-600 shrink-0" />
+                    <span className="font-semibold">Vencimento:</span>
+                    <span>{formatDateBR(selectedTodoModal.dueDate)}</span>
+                    {selectedTodoModal.dueTime && (
+                      <span className="font-mono text-slate-500">às {selectedTodoModal.dueTime}</span>
+                    )}
+                  </div>
+                )}
+
+                {selectedTodoModal.assignedTo && (
+                  <div className="flex items-center gap-2 text-slate-700 bg-emerald-50/50 p-2 rounded-lg border border-emerald-200/70">
+                    <Mail className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-semibold">Atribuído a:</span>
+                    <span className="font-medium text-emerald-900">{selectedTodoModal.assignedToName || selectedTodoModal.assignedTo}</span>
+                  </div>
+                )}
+
+                {selectedTodoModal.notes && (
+                  <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/70">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Anotações:</p>
+                    <p className="text-slate-700 whitespace-pre-wrap">{selectedTodoModal.notes}</p>
+                  </div>
+                )}
+
+                {selectedTodoModal.steps && selectedTodoModal.steps.length > 0 && (
+                  <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/70">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Etapas ({selectedTodoModal.steps.filter(s => s.completed).length}/{selectedTodoModal.steps.length}):
+                    </p>
+                    <div className="space-y-1 max-h-32 overflow-y-auto">
+                      {selectedTodoModal.steps.map(s => (
+                        <div key={s.id} className="flex items-center gap-2 text-[11px] text-slate-700">
+                          <span>{s.completed ? '✅' : '⬜'}</span>
+                          <span className={s.completed ? 'line-through text-slate-400' : ''}>{s.title}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Ações */}
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleToggleTodo(selectedTodoModal.id);
+                    setSelectedTodoModal((prev) => prev ? { ...prev, completed: !prev.completed } : null);
+                    if (showToast) showToast(selectedTodoModal.completed ? 'Marcada como pendente' : 'Tarefa concluída!', 'success');
+                  }}
+                  className={`flex-1 py-2 px-3 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    selectedTodoModal.completed
+                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-200'
+                      : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  }`}
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>{selectedTodoModal.completed ? 'Reabrir Tarefa' : 'Concluir Tarefa'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    openGoogleCalendar(selectedTodoModal);
+                    if (showToast) showToast('Abrindo Google Agenda com evento configurado! 📅', 'info');
+                  }}
+                  className="py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  title="Adicionar ao Google Agenda"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Google Agenda</span>
+                </button>
+
+                {selectedTodoModal.assignedTo && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      openInGmail(selectedTodoModal);
+                      if (showToast) showToast('Abrindo Gmail...', 'info');
+                    }}
+                    className="p-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-all flex items-center justify-center cursor-pointer"
+                    title="Notificar por Gmail"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Grid do Calendário */}
         <div>
           <div className="grid grid-cols-7 mb-3">
@@ -414,9 +598,15 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
               const isToday = day === new Date().getDate() && 
                              month === new Date().getMonth() && 
                              year === new Date().getFullYear();
+              const dayPad = String(day).padStart(2, '0');
+              const monthPad = String(month + 1).padStart(2, '0');
+              const dayStr = `${year}-${monthPad}-${dayPad}`;
+              const dayTodos = monthTodos.filter(t => t.dueDate === dayStr);
+
               const hasNotification = FIXED_NOTIFICATIONS.some(
                 n => n.day === day && (!n.months || n.months.includes(month + 1))
               );
+              const hasActiveItems = hasNotification || dayTodos.some(t => !t.completed);
 
               return (
                 <div
@@ -437,20 +627,50 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
                     >
                       {day}
                     </span>
-                    {hasNotification && (
+                    {hasActiveItems && (
                       <div className="w-2 h-2 rounded-full bg-amber-500 shadow-[0_0_6px_rgba(245,158,11,0.8)] animate-pulse"></div>
                     )}
                   </div>
-                  {hasNotification && (
+
+                  {(hasNotification || dayTodos.length > 0) && (
                     <div className="flex-1 overflow-y-auto space-y-1 mt-1">
+                      {/* Pagamentos Fixos */}
                       {FIXED_NOTIFICATIONS.filter(
                         n => n.day === day && (!n.months || n.months.includes(month + 1))
                       ).map((note, idx) => (
                         <div
-                          key={idx}
+                          key={`note-${idx}`}
                           className={`bg-slate-100/90 border border-slate-200 text-slate-800 px-1.5 py-0.5 rounded font-medium truncate ${zoomStyles.textSize}`}
+                          title={`Pagamento: ${note.description}`}
                         >
                           {note.description}
+                        </div>
+                      ))}
+
+                      {/* Tarefas To-Do Agendadas para o Dia */}
+                      {dayTodos.map((todo) => (
+                        <div
+                          key={`todo-${todo.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedTodoModal(todo);
+                          }}
+                          className={`px-1.5 py-0.5 rounded font-medium truncate flex items-center justify-between gap-1 border transition-all cursor-pointer shadow-2xs ${zoomStyles.textSize} ${
+                            todo.completed
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 line-through opacity-70'
+                              : todo.important
+                              ? 'bg-amber-100 text-amber-950 border-amber-300 font-bold'
+                              : 'bg-blue-50 text-blue-900 border-blue-200 hover:bg-blue-100'
+                          }`}
+                          title={`Tarefa: ${todo.title}${todo.dueTime ? ` @ ${todo.dueTime}` : ''} (Clique para detalhes)`}
+                        >
+                          <div className="flex items-center gap-1 min-w-0 truncate">
+                            <span className="text-[10px] shrink-0">{todo.completed ? '✅' : '📋'}</span>
+                            <span className="truncate">{todo.title}</span>
+                          </div>
+                          {todo.dueTime && (
+                            <span className="text-[9px] font-mono opacity-80 shrink-0 hidden sm:inline">{todo.dueTime}</span>
+                          )}
                         </div>
                       ))}
                     </div>
@@ -461,16 +681,81 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
           </div>
         </div>
 
-        {/* Seção de Pagamentos Fixos */}
+        {/* Seção de Pagamentos Fixos & Tarefas To-Do */}
         <div className="pt-6 border-t border-slate-200">
           <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 mb-6">
             <div>
-              <h4 className="font-bold text-slate-900 flex items-center gap-2.5 text-base">
-                <CheckSquare className="w-5 h-5 text-amber-600"/>
-                Pagamentos Fixos de {monthNames[month]}
-              </h4>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Controle de Vencimentos</p>
+              <div className="flex items-center gap-2 mb-1">
+                <h4 className="font-bold text-slate-900 flex items-center gap-2 text-base">
+                  {activeTab === 'todos' ? (
+                    <>
+                      <ListTodo className="w-5 h-5 text-blue-600" />
+                      Tarefas Agendadas de {monthNames[month]}
+                    </>
+                  ) : activeTab === 'all' ? (
+                    <>
+                      <Calendar className="w-5 h-5 text-purple-600" />
+                      Visão Completa do Mês ({monthNames[month]})
+                    </>
+                  ) : (
+                    <>
+                      <CheckSquare className="w-5 h-5 text-amber-600" />
+                      Pagamentos Fixos de {monthNames[month]}
+                    </>
+                  )}
+                </h4>
+              </div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                {activeTab === 'todos'
+                  ? 'Compromissos e Tarefas com Data'
+                  : activeTab === 'all'
+                  ? 'Pagamentos e Tarefas Unificados'
+                  : 'Controle de Vencimentos'}
+              </p>
             </div>
+
+            {/* Seletor de Abas (Pagamentos / Tarefas / Todos) */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 gap-1 text-xs">
+              <button
+                type="button"
+                onClick={() => setActiveTab('payments')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === 'payments'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <CheckSquare className="w-3.5 h-3.5 text-amber-500" />
+                <span>Pagamentos ({filteredNotifications.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('todos')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === 'todos'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <ListTodo className="w-3.5 h-3.5 text-blue-500" />
+                <span>Tarefas To-Do ({filteredMonthTodos.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('all')}
+                className={`px-3 py-1.5 rounded-lg font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === 'all'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>Todos ({filteredNotifications.length + filteredMonthTodos.length})</span>
+              </button>
+            </div>
+
+            {/* Filtro por Dia */}
             <div className="flex flex-wrap gap-2 w-full xl:w-auto">
               {uniqueFixedDays.map(day => (
                 <button
@@ -494,115 +779,251 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {filteredNotifications.map((item, idx) => {
-              const key = `${year}-${month}-${item.description}`;
-              const isChecked = !!checkedState[key];
+          {/* Conteúdo da Aba Selecionada */}
+          <div className="space-y-6">
+            {/* Lista de Pagamentos Fixos (Visível em 'payments' e 'all') */}
+            {(activeTab === 'payments' || activeTab === 'all') && (
+              <div className="space-y-3">
+                {activeTab === 'all' && (
+                  <h5 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <CheckSquare className="w-3.5 h-3.5 text-amber-500" /> Pagamentos Fixos
+                  </h5>
+                )}
 
-              return (
-                <div
-                  key={idx}
-                  className={`flex items-center gap-3.5 p-3.5 rounded-xl transition-all duration-200 border ${
-                    isChecked
-                      ? 'bg-slate-50 border-slate-200 opacity-60'
-                      : 'bg-white border-slate-200/90 hover:border-slate-300 shadow-xs'
-                  }`}
-                >
-                  <div 
-                    className="relative flex items-center shrink-0"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!isChecked) {
-                        initiatePayment(item.description);
-                      }
-                    }}
-                  >
-                    <div
-                      className={`w-5 h-5 rounded-md transition-all cursor-pointer flex items-center justify-center border ${
-                        !isChecked
-                          ? 'border-slate-300 bg-slate-50 hover:border-amber-500'
-                          : 'bg-emerald-500 border-emerald-500 text-white'
-                      }`}
-                    >
-                      {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                    </div>
-                  </div>
-                  <div
-                    className="flex-1 min-w-0 cursor-pointer select-none"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (!isChecked) {
-                        initiatePayment(item.description);
-                      }
-                    }}
-                  >
-                    <p className={`font-medium text-xs truncate ${
-                      isChecked ? "text-slate-400 line-through" : "text-slate-900 font-semibold"
-                    }`}>
-                      {item.description}
-                    </p>
-                    <span className={`text-[10px] mt-1 font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${
-                      getDueDateBadgeColor(item.day, isChecked)
-                    }`}>
-                      <Calendar className="w-2.5 h-2.5" /> Dia {item.day}
-                    </span>
-                  </div>
-                  {isChecked && (
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                        Pago
-                      </span>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          initiateFix(item.description);
-                        }}
-                        className="text-[10px] font-semibold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer"
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {filteredNotifications.map((item, idx) => {
+                    const key = `${year}-${month}-${item.description}`;
+                    const isChecked = !!checkedState[key];
+
+                    return (
+                      <div
+                        key={idx}
+                        className={`flex items-center gap-3.5 p-3.5 rounded-xl transition-all duration-200 border ${
+                          isChecked
+                            ? 'bg-slate-50 border-slate-200 opacity-60'
+                            : 'bg-white border-slate-200/90 hover:border-slate-300 shadow-xs'
+                        }`}
                       >
-                        Corrigir
-                      </button>
-                    </div>
-                  )}
+                        <div 
+                          className="relative flex items-center shrink-0"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (!isChecked) {
+                              initiatePayment(item.description);
+                            }
+                          }}
+                        >
+                          <div
+                            className={`w-5 h-5 rounded-md transition-all cursor-pointer flex items-center justify-center border ${
+                              !isChecked
+                                ? 'border-slate-300 bg-slate-50 hover:border-amber-500'
+                                : 'bg-emerald-500 border-emerald-500 text-white'
+                            }`}
+                          >
+                            {isChecked && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                          </div>
+                        </div>
+                        <div
+                          className="flex-1 min-w-0 cursor-pointer select-none"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            if (!isChecked) {
+                              initiatePayment(item.description);
+                            }
+                          }}
+                        >
+                          <p className={`font-medium text-xs truncate ${
+                            isChecked ? "text-slate-400 line-through" : "text-slate-900 font-semibold"
+                          }`}>
+                            {item.description}
+                          </p>
+                          <span className={`text-[10px] mt-1 font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${
+                            getDueDateBadgeColor(item.day, isChecked)
+                          }`}>
+                            <Calendar className="w-2.5 h-2.5" /> Dia {item.day}
+                          </span>
+                        </div>
+                        {isChecked && (
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                              Pago
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                initiateFix(item.description);
+                              }}
+                              className="text-[10px] font-semibold text-rose-600 hover:text-rose-800 hover:underline cursor-pointer"
+                            >
+                              Corrigir
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
 
-          {/* Botão Selecionar Todos Abaixo dos Pagamentos */}
-          <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 pt-5 border-t border-slate-200">
-            <div className="text-xs text-slate-500 font-medium">
-              {pendingNotifications.length > 0 ? (
-                <span>
-                  <strong className="text-slate-900 font-bold">{pendingNotifications.length}</strong> de <strong className="text-slate-900 font-bold">{filteredNotifications.length}</strong> pagamentos pendentes {selectedDayFilter ? `no Dia ${selectedDayFilter}` : 'neste filtro'}.
-                </span>
-              ) : (
-                <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
-                  <Check className="w-4 h-4 text-emerald-600" />
-                  Todos os {filteredNotifications.length} pagamentos do período estão confirmados!
-                </span>
-              )}
-            </div>
+                {/* Botão Selecionar Todos Abaixo dos Pagamentos */}
+                <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4 pt-5 border-t border-slate-200">
+                  <div className="text-xs text-slate-500 font-medium">
+                    {pendingNotifications.length > 0 ? (
+                      <span>
+                        <strong className="text-slate-900 font-bold">{pendingNotifications.length}</strong> de <strong className="text-slate-900 font-bold">{filteredNotifications.length}</strong> pagamentos pendentes {selectedDayFilter ? `no Dia ${selectedDayFilter}` : 'neste filtro'}.
+                      </span>
+                    ) : (
+                      <span className="text-emerald-700 font-semibold flex items-center gap-1.5">
+                        <Check className="w-4 h-4 text-emerald-600" />
+                        Todos os {filteredNotifications.length} pagamentos do período estão confirmados!
+                      </span>
+                    )}
+                  </div>
 
-            <button
-              onClick={initiateSelectAll}
-              disabled={pendingNotifications.length === 0}
-              className={`w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm ${
-                pendingNotifications.length > 0
-                  ? 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white shadow-emerald-600/20 cursor-pointer'
-                  : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
-              }`}
-              title={
-                pendingNotifications.length > 0
-                  ? `Marcar todos os ${pendingNotifications.length} pagamentos pendentes como pagos`
-                  : 'Nenhum pagamento pendente para confirmar'
-              }
-            >
-              <Check className="w-4 h-4 stroke-[3]" />
-              <span>
-                Selecionar Todos {selectedDayFilter ? `(Dia ${selectedDayFilter})` : '(Todos)'}
-              </span>
-            </button>
+                  <button
+                    onClick={initiateSelectAll}
+                    disabled={pendingNotifications.length === 0}
+                    className={`w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all shadow-sm ${
+                      pendingNotifications.length > 0
+                        ? 'bg-emerald-600 hover:bg-emerald-700 active:scale-[0.98] text-white shadow-emerald-600/20 cursor-pointer'
+                        : 'bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+                    }`}
+                    title={
+                      pendingNotifications.length > 0
+                        ? `Marcar todos os ${pendingNotifications.length} pagamentos pendentes como pagos`
+                        : 'Nenhum pagamento pendente para confirmar'
+                    }
+                  >
+                    <Check className="w-4 h-4 stroke-[3]" />
+                    <span>
+                      Selecionar Todos {selectedDayFilter ? `(Dia ${selectedDayFilter})` : '(Todos)'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Lista de Tarefas To-Do Agendadas (Visível em 'todos' e 'all') */}
+            {(activeTab === 'todos' || activeTab === 'all') && (
+              <div className="space-y-3 pt-2">
+                {activeTab === 'all' && (
+                  <h5 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                    <ListTodo className="w-3.5 h-3.5 text-blue-500" /> Tarefas To-Do Agendadas ({filteredMonthTodos.length})
+                  </h5>
+                )}
+
+                {filteredMonthTodos.length === 0 ? (
+                  <div className="text-center py-8 bg-slate-50/70 rounded-xl border border-dashed border-slate-200 text-slate-400">
+                    <ListTodo className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+                    <p className="text-xs font-semibold text-slate-700">Nenhuma tarefa To-Do agendada para este filtro</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Você pode criar tarefas com data de vencimento no módulo Tarefas & To-Do.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {filteredMonthTodos.map((todo) => {
+                      const isDone = todo.completed;
+                      const dayNumber = todo.dueDate ? parseInt(todo.dueDate.split('-')[2], 10) : null;
+
+                      return (
+                        <div
+                          key={todo.id}
+                          className={`flex items-center gap-3.5 p-3.5 rounded-xl transition-all duration-200 border ${
+                            isDone
+                              ? 'bg-slate-50 border-slate-200 opacity-60'
+                              : todo.important
+                              ? 'bg-amber-50/40 border-amber-300 shadow-xs'
+                              : 'bg-white border-slate-200/90 hover:border-slate-300 shadow-xs'
+                          }`}
+                        >
+                          {/* Checkbox */}
+                          <div
+                            className="relative flex items-center shrink-0 cursor-pointer"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleTodo(todo.id);
+                              if (showToast) showToast(isDone ? 'Tarefa reaberta' : 'Tarefa concluída! 🎉', 'success');
+                            }}
+                          >
+                            <div
+                              className={`w-5 h-5 rounded-md transition-all flex items-center justify-center border ${
+                                !isDone
+                                  ? 'border-slate-300 bg-slate-50 hover:border-emerald-500'
+                                  : 'bg-emerald-500 border-emerald-500 text-white'
+                              }`}
+                            >
+                              {isDone && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                            </div>
+                          </div>
+
+                          {/* Task info */}
+                          <div
+                            className="flex-1 min-w-0 cursor-pointer select-none"
+                            onClick={() => setSelectedTodoModal(todo)}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <p className={`font-medium text-xs truncate ${
+                                isDone ? "text-slate-400 line-through" : "text-slate-900 font-semibold"
+                              }`}>
+                                {todo.title}
+                              </p>
+                              {todo.important && <Star className="w-3 h-3 text-amber-500 fill-amber-400 shrink-0" />}
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                              {dayNumber && (
+                                <span className="text-[10px] font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-800 border border-blue-200">
+                                  <Calendar className="w-2.5 h-2.5" /> Dia {dayNumber}
+                                  {todo.dueTime ? ` @ ${todo.dueTime}` : ''}
+                                </span>
+                              )}
+                              {todo.assignedTo && (
+                                <span className="text-[10px] font-medium inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  <Mail className="w-2.5 h-2.5 text-emerald-600" />
+                                  <span className="max-w-[120px] truncate">{todo.assignedToName || todo.assignedTo}</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Quick Action buttons */}
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openGoogleCalendar(todo);
+                                if (showToast) showToast('Abrindo Google Agenda... 📅', 'info');
+                              }}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                              title="Adicionar / Abrir no Google Agenda"
+                            >
+                              <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                            </button>
+
+                            {todo.assignedTo && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openInGmail(todo);
+                                  if (showToast) showToast('Abrindo Gmail...', 'info');
+                                }}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors cursor-pointer"
+                                title="Abrir no Gmail"
+                              >
+                                <Mail className="w-3.5 h-3.5 text-emerald-500" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

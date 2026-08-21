@@ -18,6 +18,13 @@ vi.mock('@/shared/components/icons', () => ({
   CheckSquare: ({ className }: any) => <div className={className} data-testid="check-square">☐</div>,
   ZoomIn: ({ className }: any) => <div className={className} data-testid="zoom-in">+</div>,
   ZoomOut: ({ className }: any) => <div className={className} data-testid="zoom-out">-</div>,
+  ListTodo: ({ className }: any) => <div className={className} data-testid="list-todo-icon">Todo</div>,
+  ExternalLink: ({ className }: any) => <div className={className} data-testid="external-link-icon">🔗</div>,
+  Mail: ({ className }: any) => <div className={className} data-testid="mail-icon">✉</div>,
+  Star: ({ className }: any) => <div className={className} data-testid="star-icon">★</div>,
+  CheckCircle: ({ className }: any) => <div className={className} data-testid="check-circle-icon">✓</div>,
+  Circle: ({ className }: any) => <div className={className} data-testid="circle-icon">○</div>,
+  Clock: ({ className }: any) => <div className={className} data-testid="clock-icon">⏰</div>,
 }));
 
 const mockFixedPayments = [
@@ -368,6 +375,84 @@ describe('ExpenseCalendar', () => {
       );
 
       expect(screen.getByText('Aluguel Loja Premium')).toBeInTheDocument();
+    });
+  });
+
+  describe('todo tasks integration in calendar', () => {
+    const mockTodos = [
+      {
+        id: 'todo-1',
+        title: 'Comprar bobinas fiscais',
+        completed: false,
+        important: true,
+        dueDate: '2024-01-15',
+        dueTime: '14:00',
+        repeat: 'none' as const,
+        employeeName: 'Dark',
+        userEmail: 'dark@miplace.com',
+        createdAt: '2024-01-15T10:00:00.000Z'
+      },
+      {
+        id: 'todo-2',
+        title: 'Conferir malote bancário',
+        completed: true,
+        important: false,
+        dueDate: '2024-01-20',
+        repeat: 'none' as const,
+        employeeName: 'Dark',
+        userEmail: 'dark@miplace.com',
+        createdAt: '2024-01-15T10:00:00.000Z'
+      }
+    ];
+
+    it('should render scheduled todos in calendar grid cell', () => {
+      render(
+        <ExpenseCalendar
+          fixedPayments={mockFixedPayments}
+          checkedState={defaultCheckedState}
+          onToggleCheck={mockOnToggleCheck}
+          showToast={mockShowToast}
+          todos={mockTodos}
+        />
+      );
+
+      expect(screen.getByText('Comprar bobinas fiscais')).toBeInTheDocument();
+    });
+
+    it('should switch to Tarefas To-Do tab and list todos', async () => {
+      render(
+        <ExpenseCalendar
+          fixedPayments={mockFixedPayments}
+          checkedState={defaultCheckedState}
+          onToggleCheck={mockOnToggleCheck}
+          showToast={mockShowToast}
+          todos={mockTodos}
+        />
+      );
+
+      const todoTabButton = screen.getByText(/Tarefas To-Do/);
+      fireEvent.click(todoTabButton);
+
+      expect(screen.getAllByText('Comprar bobinas fiscais').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText('Conferir malote bancário').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('should open quick task details modal when clicking todo badge', () => {
+      render(
+        <ExpenseCalendar
+          fixedPayments={mockFixedPayments}
+          checkedState={defaultCheckedState}
+          onToggleCheck={mockOnToggleCheck}
+          showToast={mockShowToast}
+          todos={mockTodos}
+        />
+      );
+
+      const todoBadge = screen.getAllByText('Comprar bobinas fiscais')[0];
+      fireEvent.click(todoBadge);
+
+      expect(screen.getByText('Google Agenda')).toBeInTheDocument();
+      expect(screen.getByText('Concluir Tarefa')).toBeInTheDocument();
     });
   });
 });

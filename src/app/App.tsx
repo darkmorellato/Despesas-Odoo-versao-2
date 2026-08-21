@@ -7,7 +7,7 @@ import { useFixedPayments } from '@/features/fixed-payments/hooks/useFixedPaymen
 import { LoginScreen, getStoredUserSession, logoutUser, seedInitialUsersIfNotExist } from '@/features/auth';
 import type { AuthenticatedUser } from '@/features/auth';
 import { logAuditEvent } from '@/features/audit';
-import { getCachedTodos } from '@/features/todo';
+import { getCachedTodos, useTodo } from '@/features/todo';
 import { STORES_LIST, CATEGORIES_LIST, STORE_IMAGES, STORE_DISPLAY_ORDER } from '@/config/constants';
 import { getTodayLocal, formatDateBR, formatMonthBR, formatCurrency } from '@/shared/utils/formatters';
 import { getStoreColorClass, getStoreBarColor, getStoreOrder } from '@/shared/utils/helpers';
@@ -106,6 +106,10 @@ export default function App() {
 
   // Local state
   const [settings, setSettings] = useState<SettingsType>(DEFAULT_SETTINGS);
+  const { todos, toggleComplete: toggleTodoComplete } = useTodo(
+    sessionUser?.name || settings.employeeName,
+    sessionUser?.email || ''
+  );
   const [currentView, setCurrentView] = useState<ViewMode>('dashboard');
   const [editingId, setEditingId] = useState<string | null>(null);
   const originalExpenseForAudit = useRef<Expense | null>(null);
@@ -218,7 +222,6 @@ export default function App() {
 
     const checkPendingTodos = () => {
       const todayStr = getTodayLocal();
-      const todos = getCachedTodos();
       const pending = todos.filter(t => !t.completed && (t.dueDate === todayStr || !t.dueDate || t.dueDate < todayStr));
       if (pending.length > 0) {
         playTodoAlertSound();
@@ -236,7 +239,7 @@ export default function App() {
       clearTimeout(initialOffsetTimer);
       if (interval) clearInterval(interval);
     };
-  }, [sessionUser]);
+  }, [sessionUser, todos]);
 
   // Flashing title for pending payments
   useEffect(() => {
@@ -432,9 +435,8 @@ export default function App() {
   // Contagem de tarefas pendentes do To-Do para "Hoje"
   const pendingTodosToday = useMemo(() => {
     const today = getTodayLocal();
-    const todos = getCachedTodos();
     return todos.filter(t => !t.completed && (t.dueDate === today || !t.dueDate)).length;
-  }, [currentView]);
+  }, [todos]);
 
   // Fechar modais ao pressionar ESC
   useEffect(() => {
@@ -1194,6 +1196,8 @@ export default function App() {
                 onToggleCheck={toggleCheck}
                 showToast={showToast}
                 syncError={syncError}
+                todos={todos}
+                onToggleTodo={toggleTodoComplete}
               />
             </Suspense>
           ) : currentView === 'analytics' ? (
