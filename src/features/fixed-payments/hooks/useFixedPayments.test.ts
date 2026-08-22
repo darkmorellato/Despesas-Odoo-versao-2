@@ -37,6 +37,9 @@ vi.mock('firebase/firestore', async (importOriginal) => {
     setDoc: vi.fn(),
     deleteDoc: vi.fn(),
     doc: vi.fn(() => ({ id: 'mock-doc-id' })),
+    query: vi.fn(),
+    where: vi.fn(),
+    getDocs: vi.fn(() => Promise.resolve({ docs: [] })),
     serverTimestamp: vi.fn(() => new Date())
   };
 });
