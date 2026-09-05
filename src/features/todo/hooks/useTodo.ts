@@ -85,7 +85,9 @@ export const useTodo = (employeeName: string, userEmail: string) => {
               userEmail: data.userEmail || '',
               createdAt: data.createdAt?.seconds
                 ? new Date(data.createdAt.seconds * 1000).toISOString()
-                : (typeof data.createdAt === 'string' ? data.createdAt : new Date().toISOString()),
+                : (typeof data.createdAt === 'string'
+                  ? data.createdAt
+                  : (data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : new Date().toISOString())),
               completedAt: data.completedAt || undefined
             });
           });
@@ -183,23 +185,19 @@ export const useTodo = (employeeName: string, userEmail: string) => {
 
   // Alternar Concluído (com suporte a tarefas recorrentes!)
   const toggleComplete = useCallback(async (id: string) => {
-    let target: TodoItem | undefined;
-    let nextCompleted = false;
-    let completedAt: string | undefined;
+    const target = todos.find((t) => t.id === id);
+    if (!target) return;
+
+    const nextCompleted = !target.completed;
+    const completedAt = nextCompleted ? new Date().toISOString() : undefined;
 
     setTodos((prev) => {
-      target = prev.find((t) => t.id === id);
-      if (!target) return prev;
-      nextCompleted = !target.completed;
-      completedAt = nextCompleted ? new Date().toISOString() : undefined;
       const updated = prev.map((t) =>
         t.id === id ? { ...t, completed: nextCompleted, completedAt } : t
       );
       saveCachedTodos(updated);
       return updated;
     });
-
-    if (!target) return;
 
     if (nextCompleted) {
       playTodoAlertSound();
@@ -209,31 +207,38 @@ export const useTodo = (employeeName: string, userEmail: string) => {
 
     await updateTodoDoc(id, { completed: nextCompleted, completedAt });
 
-    // Se for uma tarefa recorrente e foi concluída, gera automaticamente a próxima ocorrência!
+    // Se for uma tarefa recorrente e foi concluída, gera automaticamente a próxima ocorrência
+    // apenas se ela ainda não existir no mesmo período para evitar duplicatas infinitas
     if (nextCompleted && target.repeat && target.repeat !== 'none') {
       const nextDueDate = getNextRecurrenceDate(target.dueDate, target.repeat);
-      const resetSteps = target.steps?.map(s => ({ ...s, completed: false }));
-      await addTodo(
-        target.title,
-        nextDueDate,
-        target.dueTime,
-        target.important,
-        target.notes,
-        target.repeat,
-        target.assignedTo,
-        target.assignedToName,
-        resetSteps
+      const alreadyExists = todos.some(
+        (t) => t.title.trim().toLowerCase() === target.title.trim().toLowerCase() && t.dueDate === nextDueDate
       );
+
+      if (!alreadyExists) {
+        const resetSteps = target.steps?.map(s => ({ ...s, completed: false }));
+        await addTodo(
+          target.title,
+          nextDueDate,
+          target.dueTime,
+          target.important,
+          target.notes,
+          target.repeat,
+          target.assignedTo,
+          target.assignedToName,
+          resetSteps
+        );
+      }
     }
-  }, [addTodo]);
+  }, [todos, addTodo]);
 
   // Alternar Estrela de Importante
   const toggleImportant = useCallback(async (id: string) => {
-    let nextImportant = false;
+    const target = todos.find((t) => t.id === id);
+    if (!target) return;
+    const nextImportant = !target.important;
+
     setTodos((prev) => {
-      const target = prev.find((t) => t.id === id);
-      if (!target) return prev;
-      nextImportant = !target.important;
       const updated = prev.map((t) =>
         t.id === id ? { ...t, important: nextImportant } : t
       );
@@ -243,7 +248,7 @@ export const useTodo = (employeeName: string, userEmail: string) => {
 
     playSynthesizedBeep();
     await updateTodoDoc(id, { important: nextImportant });
-  }, []);
+  }, [todos]);
 
   // Remover tarefa
   const deleteTodo = useCallback(async (id: string) => {

@@ -14,6 +14,8 @@ const sanitizeForFirestore = (obj: Record<string, any>, isUpdate = false): Recor
       if (isUpdate) {
         clean[key] = deleteField();
       }
+    } else if (val !== null && typeof val === 'object' && ('_methodName' in val || val.constructor?.name === 'FieldValue')) {
+      clean[key] = val;
     } else if (Array.isArray(val)) {
       clean[key] = val.map((item) =>
         item !== null && typeof item === 'object' && !(item instanceof Date)

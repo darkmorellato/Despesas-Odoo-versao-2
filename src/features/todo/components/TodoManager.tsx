@@ -37,9 +37,16 @@ interface TodoManagerProps {
   employeeName: string;
   userEmail: string;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
+  todoData?: ReturnType<typeof useTodo>;
 }
 
-export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmail, showToast }) => {
+export const TodoManager: React.FC<TodoManagerProps> = ({ 
+  employeeName, 
+  userEmail, 
+  showToast,
+  todoData: propTodoData
+}) => {
+  const localTodoData = useTodo(employeeName, userEmail);
   const {
     todos,
     isLoading,
@@ -51,7 +58,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
     addStep,
     toggleStep,
     deleteStep
-  } = useTodo(employeeName, userEmail);
+  } = propTodoData || localTodoData;
 
   const [activeFilter, setActiveFilter] = useState<TodoFilter>('today');
   const [searchTerm, setSearchTerm] = useState('');
@@ -112,8 +119,10 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
 
     switch (activeFilter) {
       case 'today':
-        // Inclui tarefas de hoje, sem data, atrasadas e agendadas para os próximos dias (organizadas por seções)
-        return result.filter((t) => !t.completed);
+        // Tarefas de hoje, sem data e atrasadas (tarefas agendadas para datas futuras ficam na aba Planejadas)
+        return result.filter(
+          (t) => t.dueDate === todayStr || !t.dueDate || t.dueDate < todayStr
+        );
       case 'important':
         return result.filter((t) => !t.completed && t.important);
       case 'planned':
@@ -132,12 +141,12 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
       default:
         return result.filter((t) => !t.completed);
     }
-  }, [todos, activeFilter, searchTerm, userEmail]);
+  }, [todos, activeFilter, searchTerm, userEmail, todayStr]);
 
   // Filter Counts
   const counts = useMemo(() => {
     return {
-      today: todos.filter((t) => !t.completed && (t.dueDate === todayStr || !t.dueDate)).length,
+      today: todos.filter((t) => !t.completed && (t.dueDate === todayStr || !t.dueDate || t.dueDate < todayStr)).length,
       important: todos.filter((t) => !t.completed && t.important).length,
       planned: todos.filter((t) => !t.completed && !!t.dueDate).length,
       assigned: todos.filter(
@@ -826,9 +835,12 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
                   const todayTasks = filteredTodos.filter(
                     (t) => !t.completed && (t.dueDate === todayStr || !t.dueDate)
                   );
-                  const upcomingTasks = filteredTodos.filter(
-                    (t) => !t.completed && t.dueDate && t.dueDate > todayStr
+                  const completedToday = filteredTodos.filter(
+                    (t) => t.completed
                   );
+                  const upcomingCount = todos.filter(
+                    (t) => !t.completed && t.dueDate && t.dueDate > todayStr
+                  ).length;
 
                   return (
                     <div className="space-y-4">
@@ -846,36 +858,52 @@ export const TodoManager: React.FC<TodoManagerProps> = ({ employeeName, userEmai
 
                       {/* Seção Hoje & Sem Data */}
                       <div className="space-y-2">
-                        {(upcomingTasks.length > 0 || overdueTasks.length > 0) && (
+                        {(overdueTasks.length > 0 || completedToday.length > 0) && (
                           <div className="flex items-center gap-2 px-1 pt-1">
                             <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
                               <Sun className="w-3.5 h-3.5 text-amber-500" /> Tarefas de Hoje ({todayTasks.length})
                             </span>
                           </div>
                         )}
-                        {todayTasks.length === 0 && (upcomingTasks.length > 0 || overdueTasks.length > 0) ? (
-                          <p className="text-xs text-slate-400 italic px-2 py-1">Nenhuma tarefa sem data ou para hoje.</p>
+                        {todayTasks.length === 0 ? (
+                          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 text-center">
+                            <p className="text-xs text-slate-500 font-medium">
+                              {completedToday.length > 0
+                                ? '🎉 Parabéns! Todas as tarefas de hoje foram concluídas.'
+                                : 'Nenhuma tarefa pendente para hoje.'}
+                            </p>
+                          </div>
                         ) : (
                           <div className="space-y-2">{todayTasks.map(renderTaskCard)}</div>
                         )}
                       </div>
 
-                      {/* Seção Próximas Agendadas na Agenda */}
-                      {upcomingTasks.length > 0 && (
-                        <div className="space-y-2 pt-2 border-t border-slate-100">
+                      {/* Seção Tarefas Concluídas */}
+                      {completedToday.length > 0 && (
+                        <div className="space-y-2 pt-3 border-t border-slate-100">
                           <div className="flex items-center justify-between px-1">
-                            <span className="text-[11px] font-bold text-cyan-800 uppercase tracking-wider flex items-center gap-1.5 bg-cyan-50 px-2.5 py-1 rounded-lg border border-cyan-200">
-                              <Calendar className="w-3.5 h-3.5 text-cyan-600" /> Próximas Agendadas na Agenda ({upcomingTasks.length})
+                            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                              <CheckCircle className="w-3.5 h-3.5 text-emerald-600" /> Concluídas ({completedToday.length})
                             </span>
-                            <button
-                              type="button"
-                              onClick={() => setActiveFilter('planned')}
-                              className="text-[11px] font-bold text-cyan-700 hover:text-cyan-900 hover:underline flex items-center gap-0.5 cursor-pointer"
-                            >
-                              Ver em Planejadas <ChevronRight className="w-3 h-3" />
-                            </button>
                           </div>
-                          <div className="space-y-2">{upcomingTasks.map(renderTaskCard)}</div>
+                          <div className="space-y-2">{completedToday.map(renderTaskCard)}</div>
+                        </div>
+                      )}
+
+                      {/* Aviso de Tarefas Futuras Agendadas */}
+                      {upcomingCount > 0 && (
+                        <div className="p-3 bg-cyan-50/60 border border-cyan-200/80 rounded-xl flex items-center justify-between text-xs text-cyan-900 mt-2">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="w-4 h-4 text-cyan-600 shrink-0" />
+                            <span>Você tem <strong>{upcomingCount}</strong> tarefa(s) agendada(s) para datas futuras.</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setActiveFilter('planned')}
+                            className="font-bold text-cyan-700 hover:text-cyan-900 hover:underline flex items-center gap-0.5 cursor-pointer text-xs shrink-0"
+                          >
+                            Ver Planejadas <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       )}
                     </div>

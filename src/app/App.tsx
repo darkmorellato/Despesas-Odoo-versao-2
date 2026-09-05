@@ -106,10 +106,11 @@ export default function App() {
 
   // Local state
   const [settings, setSettings] = useState<SettingsType>(DEFAULT_SETTINGS);
-  const { todos, toggleComplete: toggleTodoComplete } = useTodo(
+  const todoHookData = useTodo(
     sessionUser?.name || settings.employeeName,
     sessionUser?.email || ''
   );
+  const { todos, toggleComplete: toggleTodoComplete } = todoHookData;
   const [currentView, setCurrentView] = useState<ViewMode>('dashboard');
   const [editingId, setEditingId] = useState<string | null>(null);
   const originalExpenseForAudit = useRef<Expense | null>(null);
@@ -1239,6 +1240,7 @@ export default function App() {
                 employeeName={sessionUser?.name || settings.employeeName}
                 userEmail={sessionUser?.email || ''}
                 showToast={showToast}
+                todoData={todoHookData}
               />
             </Suspense>
           ) : (

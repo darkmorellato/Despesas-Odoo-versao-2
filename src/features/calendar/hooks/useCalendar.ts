@@ -134,7 +134,23 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
   }, [user, firebaseRefs.checksRef]);
 
   const toggleCheck = useCallback(async (key: string, status: boolean) => {
-    const newChecks = { ...checks, [key]: status };
+    const parts = key.split('-');
+    let additionalKey: string | null = null;
+    if (parts.length >= 3) {
+      const year = parts[0];
+      const month = parts[1];
+      const desc = parts.slice(2).join('-');
+      const normDesc = normalizeTaskDescription(desc);
+      if (normDesc !== desc) {
+        additionalKey = `${year}-${month}-${normDesc}`;
+      }
+    }
+
+    const newChecks = {
+      ...checks,
+      [key]: status,
+      ...(additionalKey ? { [additionalKey]: status } : {})
+    };
     setChecks(newChecks);
     saveToLocalStorage(newChecks);
 
@@ -169,9 +185,11 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
     return payments.filter(task => {
       if (task.months && !task.months.includes(currentMonth + 1)) return false;
       if (task.day > currentDay) return false;
+      const rawKey = `${currentYear}-${currentMonth}-${task.description}`;
       const normalizedDesc = normalizeTaskDescription(task.description);
-      const key = `${currentYear}-${currentMonth}-${normalizedDesc}`;
-      return !checks[key];
+      const normKey = `${currentYear}-${currentMonth}-${normalizedDesc}`;
+      const isChecked = !!(checks[rawKey] || checks[normKey]);
+      return !isChecked;
     });
   }, [checks]);
 

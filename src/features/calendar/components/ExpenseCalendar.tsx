@@ -24,6 +24,7 @@ import type { TodoItem } from '@/features/todo/types';
 import { openGoogleCalendar, openInGmail } from '@/features/todo/utils/calendarIntegration';
 import { getCachedTodos, updateTodoDoc } from '@/features/todo/services/todoService';
 import { playTodoAlertSound, playSynthesizedBeep } from '@/shared/utils/audio';
+import { normalizeTaskDescription } from '../hooks/useCalendar';
 
 export interface ExpenseCalendarProps {
   fixedPayments: FixedNotification[];
@@ -91,19 +92,23 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
   }, [propTodos]);
 
   const handleToggleTodo = useCallback(async (id: string) => {
-    if (onToggleTodo) {
-      onToggleTodo(id);
-      return;
-    }
     const target = internalTodos.find((t) => t.id === id);
     if (!target) return;
     const nextCompleted = !target.completed;
     const completedAt = nextCompleted ? new Date().toISOString() : undefined;
+
     if (nextCompleted) playTodoAlertSound();
     else playSynthesizedBeep();
+
     setInternalTodos((prev) =>
       prev.map((t) => (t.id === id ? { ...t, completed: nextCompleted, completedAt } : t))
     );
+
+    if (onToggleTodo) {
+      await onToggleTodo(id);
+      return;
+    }
+
     await updateTodoDoc(id, { completed: nextCompleted, completedAt });
   }, [onToggleTodo, internalTodos]);
 
@@ -114,11 +119,11 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
 
   // Tarefas To-Do com data de vencimento dentro do mês/ano exibido
   const monthTodos = useMemo(() => {
-    const list = propTodos || internalTodos;
+    const list = internalTodos;
     const monthPad = String(month + 1).padStart(2, '0');
     const monthPrefix = `${year}-${monthPad}`;
     return list.filter((t) => t.dueDate && t.dueDate.startsWith(monthPrefix));
-  }, [propTodos, internalTodos, year, month]);
+  }, [internalTodos, year, month]);
 
   const filteredMonthTodos = useMemo(() => {
     if (selectedDayFilter === null) return monthTodos;
@@ -144,8 +149,12 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
   ];
 
   const setCheckStatus = useCallback((desc: string, status: boolean) => {
-    const key = `${year}-${month}-${desc}`;
-    onToggleCheck(key, status);
+    const rawKey = `${year}-${month}-${desc}`;
+    const normKey = `${year}-${month}-${normalizeTaskDescription(desc)}`;
+    onToggleCheck(rawKey, status);
+    if (normKey !== rawKey) {
+      onToggleCheck(normKey, status);
+    }
   }, [year, month, onToggleCheck]);
 
   const initiatePayment = useCallback((desc: string) => {
@@ -259,8 +268,9 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
 
   const pendingNotifications = useMemo(() => {
     return filteredNotifications.filter(item => {
-      const key = `${year}-${month}-${item.description}`;
-      return !checkedState[key];
+      const rawKey = `${year}-${month}-${item.description}`;
+      const normKey = `${year}-${month}-${normalizeTaskDescription(item.description)}`;
+      return !(checkedState[rawKey] || checkedState[normKey]);
     });
   }, [filteredNotifications, year, month, checkedState]);
 
@@ -534,9 +544,10 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
                 <button
                   type="button"
                   onClick={() => {
+                    const willComplete = !selectedTodoModal.completed;
                     handleToggleTodo(selectedTodoModal.id);
-                    setSelectedTodoModal((prev) => prev ? { ...prev, completed: !prev.completed } : null);
-                    if (showToast) showToast(selectedTodoModal.completed ? 'Marcada como pendente' : 'Tarefa concluída!', 'success');
+                    setSelectedTodoModal((prev) => prev ? { ...prev, completed: willComplete } : null);
+                    if (showToast) showToast(willComplete ? 'Tarefa concluída!' : 'Marcada como pendente', 'success');
                   }}
                   className={`flex-1 py-2 px-3 font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                     selectedTodoModal.completed
@@ -792,8 +803,9 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {filteredNotifications.map((item, idx) => {
-                    const key = `${year}-${month}-${item.description}`;
-                    const isChecked = !!checkedState[key];
+                    const rawKey = `${year}-${month}-${item.description}`;
+                    const normKey = `${year}-${month}-${normalizeTaskDescription(item.description)}`;
+                    const isChecked = !!(checkedState[rawKey] || checkedState[normKey]);
 
                     return (
                       <div
