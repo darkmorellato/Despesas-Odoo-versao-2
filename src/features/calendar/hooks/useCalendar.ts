@@ -102,6 +102,15 @@ export const normalizeCheckKey = (key: string): string => {
   return `${year}-${month}-${normalizeTaskDescription(desc)}`;
 };
 
+/**
+ * Monta o field path de um check para updateDoc(). As chaves podem conter
+ * pontuação (ex.: "2026-0-Comgás - Débito aut." termina em ponto) — nesse caso
+ * o segmento precisa ser escapado com crases, senão o Firestore interpreta
+ * como caminho aninhado e rejeita o update ("Invalid field path").
+ */
+const checksFieldPath = (key: string): string =>
+  /[.`\n]/.test(key) ? `checks.\`${key.replace(/`/g, '``')}\`` : `checks.${key}`;
+
 const saveToLocalStorage = (checks: CalendarCheck) => {
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(checks));
@@ -211,10 +220,11 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
     }
 
     try {
-      // Objeto de update multi-campo: só as chaves alteradas (nunca o mapa inteiro)
+      // Objeto de update multi-campo: só as chaves alteradas (nunca o mapa
+      // inteiro); chaves com ponto escapadas com crases (ver checksFieldPath)
       const update: Record<string, boolean> = {};
       entries.forEach(({ key, status }) => {
-        update[`checks.${key}`] = status;
+        update[checksFieldPath(key)] = status;
       });
       await updateDoc(firebaseRefs.checksRef, update);
       console.log('✅ Calendário: Check confirmado pelo servidor —', entries);

@@ -212,4 +212,25 @@ describe('useCalendar', () => {
       'checks.2024-0-Energia': true
     });
   });
+
+  it('escapa field path de chave com ponto (ex.: "Débito aut.")', async () => {
+    vi.mocked(onSnapshot).mockImplementation((ref: any, cb: any) => {
+      cb({ exists: () => false });
+      return vi.fn();
+    });
+
+    (updateDoc as any).mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useCalendar(mockUser));
+
+    act(() => {
+      result.current.toggleCheck('2026-0-Contrato Sr. Paulo Ltda.', true);
+    });
+
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    const updatePayload = (updateDoc as any).mock.calls[0][1];
+    // Segmento com ponto entre crases — sem o escape o Firestore rejeita
+    // com "Invalid field path" (chaves legadas tipo "Débito aut.")
+    expect(updatePayload).toEqual({ 'checks.`2026-0-Contrato Sr. Paulo Ltda.`': true });
+  });
 });

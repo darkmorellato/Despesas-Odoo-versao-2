@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { db } from '@/config/firebase';
+import { db, auth, onAuthStateChanged } from '@/config/firebase';
 import { collection, doc, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import type { TodoItem, TodoRepeat, TodoStep } from '../types';
 import { getCachedTodos, saveCachedTodos, addTodoDoc, updateTodoDoc, deleteTodoDoc } from '../services/todoService';
@@ -88,9 +88,26 @@ export const useTodo = (employeeName: string, userEmail: string, enabled: boolea
   // Guarda de idempotência para toggleComplete (duplo clique)
   const toggleInFlight = useRef<Set<string>>(new Set());
 
-  // Escuta em tempo real no Firestore
+  // Aguarda o login anônimo do Firebase: as firestore.rules exigem
+  // request.auth != null — se assinarmos o listener antes, o Firestore nega
+  // ("Missing or insufficient permissions") e o listener morre, deixando o
+  // app preso no cache local (os outros hooks já esperavam o `user`).
+  const [authReady, setAuthReady] = useState(false);
   useEffect(() => {
     if (!enabled) return;
+    if (auth.currentUser) {
+      setAuthReady(true);
+      return;
+    }
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setAuthReady(!!u);
+    });
+    return () => unsub();
+  }, [enabled]);
+
+  // Escuta em tempo real no Firestore
+  useEffect(() => {
+    if (!enabled || !authReady) return;
     let unsubscribe: (() => void) | undefined;
 
     try {
@@ -156,12 +173,18 @@ export const useTodo = (employeeName: string, userEmail: string, enabled: boolea
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [enabled]);
+  }, [enabled, authReady]);
 
-  // Solicita permissão para notificações nativas ao carregar
+  // Permissão de notificação só pode ser pedida dentro de um GESTO do usuário
+  // (regra dos navegadores — no carregamento o navegador bloqueia e ignora).
+  // Pedimos no primeiro clique/toque da sessão; se já concedida, é no-op.
   useEffect(() => {
     if (!enabled) return;
-    requestNotificationPermission().catch(() => {});
+    const requestOnGesture = () => {
+      requestNotificationPermission().catch(() => {});
+    };
+    document.addEventListener('pointerdown', requestOnGesture, { once: true, passive: true });
+    return () => document.removeEventListener('pointerdown', requestOnGesture);
   }, [enabled]);
 
   // Monitora horários de vencimento/lembrete e dispara Bip sonoro + Notificação nativa
