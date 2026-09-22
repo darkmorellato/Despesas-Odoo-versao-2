@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import type { User } from 'firebase/auth';
 import { getFirebaseRefs } from '@/config/firebase';
-import { ADMIN_PASSWORD } from '@/config/constants';
 import { validateAnyAdminPassword } from '@/features/auth';
 import type { Expense, SyncStatus, StoreSplit, StoreName } from '@/shared/types';
 import { serverTimestamp, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, Timestamp } from 'firebase/firestore';
@@ -45,12 +44,19 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
 
   // Read expenses from Firebase
   useEffect(() => {
-    if (!user) return;
-    
+    if (!user) {
+      // Sem usuário: zera loading E estado — antes ficava spinner infinito e
+      // as despesas da sessão anterior continuavam visíveis (vazamento).
+      setIsLoading(false);
+      setAllExpenses([]);
+      setSyncStatus('offline');
+      return;
+    }
+
     setSyncStatus('syncing');
 
     const q = query(firebaseRefs.expensesRef, orderBy('date', 'desc'));
-    
+
     const unsubscribe = onSnapshot(
       q,
       (snapshot) => {
@@ -112,7 +118,9 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
       const docRef = doc(firebaseRefs.expensesRef, id);
       await updateDoc(docRef, {
         deleted: true,
-        deletedAt: new Date().toISOString(),
+        // Relógio do servidor: antes usava new Date() do cliente e o "quando
+        // foi excluído" ficava inconsistente entre máquinas/fusos
+        deletedAt: serverTimestamp(),
         deleteReason: reason || 'Excluído pelo usuário',
         deletedBy: deletedBy || 'Administrador',
         updatedAt: serverTimestamp()
@@ -214,32 +222,32 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
  * // Retorna divisão igual entre as 5 lojas
  * ```
  */
-export const splitExpense = (store: StoreName, totalAmount: number): StoreSplit[] => {
-  const entries: StoreSplit[] = [];
-
-  if (store === "Piracicaba (DP - Realme - XV)") {
-    ["Dom Pedro II", "Realme", "Xv de Novembro"].forEach(s => {
-      entries.push({ s: s as StoreName, v: totalAmount / 3 });
-    });
-  } else if (store === "Amparo (Premium - Kassouf)") {
-    ["Premium", "Kassouf"].forEach(s => {
-      entries.push({ s: s as StoreName, v: totalAmount / 2 });
-    });
-  } else if (store === "Todas") {
-    ["Dom Pedro II", "Realme", "Xv de Novembro", "Premium", "Kassouf"].forEach(s => {
-      entries.push({ s: s as StoreName, v: totalAmount / 5 });
-    });
-  } else {
-    entries.push({ s: store, v: totalAmount });
-  }
-
-  return entries;
-};
-
 export const GROUP_STORES_MAP: Record<string, StoreName[]> = {
   "Todas": ["Dom Pedro II", "Realme", "Xv de Novembro", "Premium", "Kassouf"],
   "Piracicaba (DP - Realme - XV)": ["Dom Pedro II", "Realme", "Xv de Novembro"],
   "Amparo (Premium - Kassouf)": ["Premium", "Kassouf"]
+};
+
+export const splitExpense = (store: StoreName, totalAmount: number): StoreSplit[] => {
+  const stores = GROUP_STORES_MAP[store];
+
+  // Loja individual (não é grupo): devolve o valor arredondado a 2 casas
+  if (!stores || stores.length === 0) {
+    return [{ s: store, v: Math.round(totalAmount * 100) / 100 }];
+  }
+
+  // Rateio em CENTAVOS com distribuição do resíduo: a soma das parcelas é
+  // sempre exata em relação ao total. Antes, `totalAmount / 3` gerava
+  // 33.333333333333336 — gravado no Firestore e os relatórios por loja
+  // nunca fechavam com o total (3×33,33 = 99,99 ≠ 100,00).
+  const totalCents = Math.round(totalAmount * 100);
+  const baseCents = Math.floor(totalCents / stores.length);
+  const remainderCents = totalCents - baseCents * stores.length;
+
+  return stores.map((s, index) => ({
+    s,
+    v: (baseCents + (index < remainderCents ? 1 : 0)) / 100,
+  }));
 };
 
 export const isGroupStore = (store: string): store is "Todas" | "Piracicaba (DP - Realme - XV)" | "Amparo (Premium - Kassouf)" => {
@@ -271,15 +279,17 @@ export const detectExpenseGroup = (
       isGroup: true,
       groupName: expense.store,
       siblings: [expense],
-      totalAmount: expense.originalTotal || expense.amount
+      totalAmount: expense.originalTotal ?? expense.amount
     };
   }
 
   // Busca despesas ativas não-deletadas com mesma data, descrição, categoria
-  const matchingCandidates = allExpenses.filter(e => 
+  // (guards: doc sem `description` quebrava .trim() com TypeError)
+  const targetDescription = (expense.description ?? '').trim().toLowerCase();
+  const matchingCandidates = allExpenses.filter(e =>
     !e.deleted &&
     e.date === expense.date &&
-    e.description.trim().toLowerCase() === expense.description.trim().toLowerCase() &&
+    (e.description ?? '').trim().toLowerCase() === targetDescription &&
     e.category === expense.category
   );
 
@@ -289,7 +299,7 @@ export const detectExpenseGroup = (
   const todasStores = GROUP_STORES_MAP["Todas"];
   if (todasStores.every(s => storesSet.has(s))) {
     const siblings = matchingCandidates.filter(e => todasStores.includes(e.store as StoreName));
-    const totalAmount = expense.originalTotal || siblings.reduce((sum, s) => sum + s.amount, 0);
+    const totalAmount = expense.originalTotal ?? siblings.reduce((sum, s) => sum + s.amount, 0);
     return { isGroup: true, groupName: "Todas", siblings, totalAmount };
   }
 
@@ -297,7 +307,7 @@ export const detectExpenseGroup = (
   const piraStores = GROUP_STORES_MAP["Piracicaba (DP - Realme - XV)"];
   if (piraStores.every(s => storesSet.has(s))) {
     const siblings = matchingCandidates.filter(e => piraStores.includes(e.store as StoreName));
-    const totalAmount = expense.originalTotal || siblings.reduce((sum, s) => sum + s.amount, 0);
+    const totalAmount = expense.originalTotal ?? siblings.reduce((sum, s) => sum + s.amount, 0);
     return { isGroup: true, groupName: "Piracicaba (DP - Realme - XV)", siblings, totalAmount };
   }
 
@@ -305,7 +315,7 @@ export const detectExpenseGroup = (
   const amparoStores = GROUP_STORES_MAP["Amparo (Premium - Kassouf)"];
   if (amparoStores.every(s => storesSet.has(s))) {
     const siblings = matchingCandidates.filter(e => amparoStores.includes(e.store as StoreName));
-    const totalAmount = expense.originalTotal || siblings.reduce((sum, s) => sum + s.amount, 0);
+    const totalAmount = expense.originalTotal ?? siblings.reduce((sum, s) => sum + s.amount, 0);
     return { isGroup: true, groupName: "Amparo (Premium - Kassouf)", siblings, totalAmount };
   }
 
@@ -314,7 +324,7 @@ export const detectExpenseGroup = (
     isGroup: !!expense.originalTotal,
     groupName: null,
     siblings: [expense],
-    totalAmount: expense.originalTotal || expense.amount
+    totalAmount: expense.originalTotal ?? expense.amount
   };
 };
 
@@ -324,17 +334,19 @@ export const detectExpenseGroup = (
  * Usado para autorizar exclusão de despesas após 24h e correções
  * no calendário de pagamentos.
  * 
+ * ASSÍNCHRONO: valida contra o Firestore (nenhuma senha vive no cliente).
+ * 
  * @param password - Senha fornecida pelo usuário
- * @returns true se a senha está correta, false caso contrário
+ * @returns Promise<boolean> — true se a senha está correta
  * 
  * @example
  * ```ts
- * if (validateAdminPassword(userInput)) {
+ * if (await validateAdminPassword(userInput)) {
  *   await deleteExpense(id);
  * }
  * ```
  */
-export const validateAdminPassword = (password: string): boolean => {
+export const validateAdminPassword = (password: string): Promise<boolean> => {
   return validateAnyAdminPassword(password);
 };
 

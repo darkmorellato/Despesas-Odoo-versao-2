@@ -1,6 +1,7 @@
 import type { StoreName, CategoryName, FixedNotification } from '@/shared/types';
 
-export const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || "#Banana@10";
+// NOTA: não existe mais senha de administrador no cliente.
+// Validations consultam o Firestore (authService.validateAnyAdminPassword).
 
 export const CATEGORIES_LIST: CategoryName[] = [
   "Despesa",

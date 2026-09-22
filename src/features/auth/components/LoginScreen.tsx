@@ -18,6 +18,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return; // Enter duplo no mesmo tick não autentica 2x
     setErrorMessage(null);
 
     if (!email.trim()) {
@@ -86,7 +87,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
               <div className="p-1 bg-rose-100 rounded-md text-rose-600 shrink-0 mt-0.5">
                 <AlertTriangle className="w-4 h-4" />
               </div>
-              <div className="flex-1">
+              <div className="flex-1" aria-live="polite">
                 <p className="text-xs font-bold text-rose-800">Falha no Acesso</p>
                 <p className="text-xs text-rose-700 mt-0.5">{errorMessage}</p>
               </div>
@@ -107,6 +108,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   type="email"
                   required
                   autoFocus
+                  autoComplete="username"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="exemplo@miplace.com"
@@ -128,6 +130,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   ref={passwordInputRef}
                   type={showPassword ? 'text' : 'password'}
                   required
+                  autoComplete="current-password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="Digite sua senha"

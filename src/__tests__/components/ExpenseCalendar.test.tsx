@@ -2,7 +2,6 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { ExpenseCalendar } from '@/features/calendar';
-import { ADMIN_PASSWORD } from '@/config/constants';
 
 vi.mock('@/shared/components/icons', () => ({
   Calendar: ({ className }: any) => <div className={className} data-testid="calendar-icon">Cal</div>,
@@ -245,8 +244,10 @@ describe('ExpenseCalendar', () => {
         />
       );
 
-      expect(screen.getByText('Dia 5')).toBeInTheDocument();
-      expect(screen.getByText('Dia 10')).toBeInTheDocument();
+      // 'Dia 5'/'Dia 10' aparecem tanto nos botões de filtro quanto nos
+      // itens da lista (agora visível sem filtro por padrão)
+      expect(screen.getAllByText('Dia 5').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Dia 10').length).toBeGreaterThan(0);
       expect(screen.getByText('Todos')).toBeInTheDocument();
     });
 
@@ -260,7 +261,7 @@ describe('ExpenseCalendar', () => {
         />
       );
 
-      expect(screen.getByText('Aluguel Loja Premium')).toBeInTheDocument();
+      expect(screen.getAllByText('Aluguel Loja Premium').length).toBeGreaterThan(0);
     });
   });
 
@@ -275,7 +276,7 @@ describe('ExpenseCalendar', () => {
         />
       );
 
-      expect(screen.getByText('Aluguel Loja Premium')).toBeInTheDocument();
+      expect(screen.getAllByText('Aluguel Loja Premium').length).toBeGreaterThan(0);
     });
   });
 
@@ -294,7 +295,7 @@ describe('ExpenseCalendar', () => {
         />
       );
 
-      expect(screen.getByText('Aluguel Loja Premium')).toBeInTheDocument();
+      expect(screen.getAllByText('Aluguel Loja Premium').length).toBeGreaterThan(0);
     });
 
     it('should show Corrigir button for checked items', () => {
@@ -311,7 +312,7 @@ describe('ExpenseCalendar', () => {
         />
       );
 
-      expect(screen.getByText('Aluguel Loja Premium')).toBeInTheDocument();
+      expect(screen.getAllByText('Aluguel Loja Premium').length).toBeGreaterThan(0);
     });
   });
 
@@ -330,7 +331,7 @@ describe('ExpenseCalendar', () => {
         />
       );
 
-      expect(screen.getByText('Aluguel Loja Premium')).toBeInTheDocument();
+      expect(screen.getAllByText('Aluguel Loja Premium').length).toBeGreaterThan(0);
     });
   });
 
@@ -361,7 +362,7 @@ describe('ExpenseCalendar', () => {
         />
       );
 
-      expect(screen.getByText('Aluguel Loja Premium')).toBeInTheDocument();
+      expect(screen.getAllByText('Aluguel Loja Premium').length).toBeGreaterThan(0);
     });
 
     it('should show all payments when clicking Todos', async () => {
@@ -374,7 +375,7 @@ describe('ExpenseCalendar', () => {
         />
       );
 
-      expect(screen.getByText('Aluguel Loja Premium')).toBeInTheDocument();
+      expect(screen.getAllByText('Aluguel Loja Premium').length).toBeGreaterThan(0);
     });
   });
 

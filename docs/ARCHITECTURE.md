@@ -316,7 +316,10 @@ type StoreName = "Piracicaba" | "Amparo" | "Todas";
 ### 3. Correções no Calendário
 
 - Requer senha de administrador
-- Senha configurada em `VITE_ADMIN_PASSWORD`
+- Validação **assíncrona contra o Firestore** (`authService.validateAnyAdminPassword`)
+  — nenhuma senha existe no código do cliente; senha mestra em
+  `system_settings_v1/admin_master` (hash) e usuários com role `Administrador`
+- Gestão de senhas: `node scripts/seed_users.mjs` (hash SHA-256 + salt)
 
 ### 4. Pagamentos Fixos
 

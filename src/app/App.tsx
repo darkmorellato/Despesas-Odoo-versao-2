@@ -4,13 +4,13 @@ import { useExpenses, splitExpense, validateAdminPassword, detectExpenseGroup, i
 import { ExpenseSummaryCards } from '@/features/dashboard/components/ExpenseSummaryCards';
 import { useCalendar } from '@/features/calendar/hooks/useCalendar';
 import { useFixedPayments } from '@/features/fixed-payments/hooks/useFixedPayments';
-import { LoginScreen, getStoredUserSession, logoutUser, seedInitialUsersIfNotExist } from '@/features/auth';
+import { LoginScreen, getStoredUserSession, logoutUser } from '@/features/auth';
 import type { AuthenticatedUser } from '@/features/auth';
 import { logAuditEvent } from '@/features/audit';
-import { getCachedTodos, useTodo } from '@/features/todo';
-import { STORES_LIST, CATEGORIES_LIST, STORE_IMAGES, STORE_DISPLAY_ORDER } from '@/config/constants';
+import { useTodo } from '@/features/todo';
+import { CATEGORIES_LIST, STORE_IMAGES } from '@/config/constants';
 import { getTodayLocal, formatDateBR, formatMonthBR, formatCurrency } from '@/shared/utils/formatters';
-import { getStoreColorClass, getStoreBarColor, getStoreOrder } from '@/shared/utils/helpers';
+import { getStoreOrder } from '@/shared/utils/helpers';
 import { playCalendarAlertSound, playTodoAlertSound } from '@/shared/utils/audio';
 import { exportVectorPDF, openVectorPDFInNewTab } from '@/shared/utils/pdfExport';
 import { ToastContainer, DateInput, PendingPaymentsAlert, PrintPreviewModal, ReceiptModal } from '@/shared/components/ui';
@@ -26,37 +26,24 @@ const TodoManager = lazy(() => import('@/features/todo/components/TodoManager').
 import {
   ListTodo,
   FileText,
-
-  Plus,
   Edit,
   Trash2,
   Download,
   Settings,
-  RotateCcw,
   Calendar,
-  Tag,
-  DollarSign,
-  Store,
   Printer,
-  Check,
   X,
   AlertCircle,
   Save,
   Upload,
-  AlertTriangle,
   Search,
   ChevronLeft,
   ChevronRight,
   CheckSquare,
-  Globe,
-  Wifi,
-  WifiOff,
   HardDrive,
   Cloud,
   Home,
   BarChart2,
-  TrendingUp,
-  TrendingDown,
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
@@ -81,11 +68,11 @@ export default function App() {
   const [sessionUser, setSessionUser] = useState<AuthenticatedUser | null>(() => getStoredUserSession());
 
   // Check if session user is Dark Morellato (Admin)
+  // Somente o e-mail exato define o admin — nunca por substring do nome
+  // (evita escalada de privilégio tipo "darkson@..." ou nome "Darkson").
   const isDarkAdmin = useMemo(() => {
-    if (!sessionUser) return false;
-    const email = sessionUser.email.toLowerCase().trim();
-    const name = sessionUser.name.toLowerCase().trim();
-    return email === 'darkmorelato@miplace.com' || name.includes('dark');
+    if (!sessionUser?.email) return false;
+    return sessionUser.email.toLowerCase().trim() === 'darkmorelato@miplace.com';
   }, [sessionUser]);
 
   // Auth and data hooks
@@ -158,10 +145,9 @@ export default function App() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Initialize and seed database users if not existing
-  useEffect(() => {
-    seedInitialUsersIfNotExist();
-  }, []);
+  // Evita sobrescrever o localStorage com settings padrão antes do carregamento
+  // (um JSON corrompido seria destruído silenciosamente pelo efeito de save).
+  const settingsLoadedRef = useRef(false);
 
   // Load settings from localStorage
   useEffect(() => {
@@ -169,21 +155,29 @@ export default function App() {
     if (savedSet) {
       try {
         const parsed = JSON.parse(savedSet);
-        parsed.categories = CATEGORIES_LIST.map(cat => ({ label: cat, odooRef: cat }));
-        if (sessionUser && (!parsed.employeeName || parsed.employeeName === "Seu Nome")) {
-          parsed.employeeName = sessionUser.name;
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          parsed.categories = CATEGORIES_LIST.map(cat => ({ label: cat, odooRef: cat }));
+          if (sessionUser && (!parsed.employeeName || parsed.employeeName === "Seu Nome")) {
+            parsed.employeeName = sessionUser.name;
+          }
+          setSettings(parsed);
         }
-        setSettings(parsed);
       } catch (e) {
+        // Preserva o valor corrompido em cópia de segurança antes de qualquer save
         console.warn("Erro ao parsear settings:", e);
+        try {
+          localStorage.setItem('odoo_fast_settings_corrupt_backup', savedSet);
+        } catch { /* storage cheio — ignora */ }
       }
     } else if (sessionUser) {
       setSettings(prev => ({ ...prev, employeeName: sessionUser.name }));
     }
+    settingsLoadedRef.current = true;
   }, [sessionUser]);
 
-  // Save settings to localStorage
+  // Save settings to localStorage (pula a 1ª execução — só persiste após o load)
   useEffect(() => {
+    if (!settingsLoadedRef.current) return;
     localStorage.setItem('odoo_fast_settings', JSON.stringify(settings));
   }, [settings]);
 
@@ -195,15 +189,35 @@ export default function App() {
   }, [sessionUser, settings.employeeName]);
 
   // Check pending payments (Calendário - a cada 15 minutos com hey_listen.mp3)
+  // Refs evitam que a assinatura instável de getPendingPayments/fixedPayments
+  // reinicie o efeito a cada toggle no calendário (reabrindo o alerta que o
+  // usuário fechou e tocando o som de novo).
+  const getPendingPaymentsRef = useRef(getPendingPayments);
+  const fixedPaymentsRef = useRef(fixedPayments);
+  useEffect(() => { getPendingPaymentsRef.current = getPendingPayments; }, [getPendingPayments]);
+  useEffect(() => { fixedPaymentsRef.current = fixedPayments; }, [fixedPayments]);
+
+  // Assinatura da última lista de pendências exibida — só reabre se MUDOU
+  const lastPendingSignatureRef = useRef('');
+
   useEffect(() => {
     if (!sessionUser) return;
     const checkPending = () => {
-      const pending = getPendingPayments(fixedPayments);
+      const pending = getPendingPaymentsRef.current(fixedPaymentsRef.current);
+      const signature = pending.map(p => `${p.day}-${p.description}`).join('|');
+
       if (pending.length > 0) {
+        const changed = signature !== lastPendingSignatureRef.current;
+        lastPendingSignatureRef.current = signature;
         setPendingItems(pending);
-        setShowReminder(true);
-        playCalendarAlertSound();
+        // Só (re)abre e toca som quando o conjunto de pendências mudou;
+        // fechar o alerta manualmente não é desfeito por reexecuções do efeito.
+        if (changed) {
+          setShowReminder(true);
+          playCalendarAlertSound();
+        }
       } else {
+        lastPendingSignatureRef.current = '';
         setShowReminder(false);
         setPendingItems([]);
       }
@@ -215,22 +229,29 @@ export default function App() {
       clearTimeout(timer);
       clearInterval(interval);
     };
-  }, [getPendingPayments, fixedPayments, sessionUser]);
+  }, [sessionUser]);
 
   // Check pending To-Do tasks (Tarefas - a cada 30 minutos com todo.mp3, intercalado aos 5 minutos)
+  const todosRef = useRef(todos);
+  useEffect(() => { todosRef.current = todos; }, [todos]);
+
   useEffect(() => {
     if (!sessionUser) return;
 
     const checkPendingTodos = () => {
       const todayStr = getTodayLocal();
-      const pending = todos.filter(t => !t.completed && (t.dueDate === todayStr || !t.dueDate || t.dueDate < todayStr));
+      // Somente tarefas COM data (hoje ou atrasadas) disparam o alerta —
+      // tarefas sem dueDate bipariam para sempre.
+      const pending = todosRef.current.filter(
+        t => !t.completed && t.dueDate && t.dueDate <= todayStr
+      );
       if (pending.length > 0) {
         playTodoAlertSound();
       }
     };
 
     // Inicia aos 5 minutos (para intercalar com o calendário) e depois repete a cada 30 minutos
-    let interval: any;
+    let interval: ReturnType<typeof setInterval> | undefined;
     const initialOffsetTimer = setTimeout(() => {
       checkPendingTodos();
       interval = setInterval(checkPendingTodos, 30 * 60 * 1000); // a cada 30 minutos
@@ -240,12 +261,12 @@ export default function App() {
       clearTimeout(initialOffsetTimer);
       if (interval) clearInterval(interval);
     };
-  }, [sessionUser, todos]);
+  }, [sessionUser]);
 
   // Flashing title for pending payments
   useEffect(() => {
     if (!sessionUser) return;
-    let titleInterval: any;
+    let titleInterval: ReturnType<typeof setInterval> | undefined;
     if (showReminder && pendingItems.length > 0) {
       let isAlert = true;
       titleInterval = setInterval(() => {
@@ -285,6 +306,13 @@ export default function App() {
       setSelectedMonth(availableMonths[availableMonths.length - 1]);
     }
   }, [availableMonths, selectedMonth]);
+
+  // Após salvar, salta o filtro para a data/mês do lançamento — senão a
+  // despesa recém-salva não aparece na lista (dia anterior ainda selecionado).
+  const revealSavedExpense = useCallback((savedDate: string) => {
+    setSelectedDate(savedDate);
+    setSelectedMonth(savedDate.substring(0, 7));
+  }, []);
 
   // Filter expenses
   const filteredExpenses = useMemo(() => {
@@ -460,31 +488,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, [editPasswordModal.open, deleteModal.open, isSettingsOpen, showBackupOptions, showPrintPreview]);
 
-  const handleAmountChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    let val = e.target.value.replace(/\D/g, '');
-    if (!val) {
-      setAmount('');
-      return;
-    }
-    setAmount(new Intl.NumberFormat('pt-BR', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(parseFloat(val) / 100));
-  }, []);
-
-  const handleAmountPaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault();
-    const pasted = e.clipboardData.getData('text');
-    const normalized = pasted.trim().replace(/\./g, '').replace(',', '.');
-    const num = parseFloat(normalized);
-    if (!isNaN(num) && num > 0) {
-      setAmount(new Intl.NumberFormat('pt-BR', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-      }).format(num));
-    }
-  }, []);
-
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
@@ -503,6 +506,9 @@ export default function App() {
     }
 
     setIsSubmitting(true);
+    // Rastreia operações concluídas para diagnosticar falha parcial
+    // (grupo editado sem transação — se falhar no meio, informar ao usuário).
+    let opsCompleted = 0;
     try {
       if (editingId) {
         const prev = originalExpenseForAudit.current;
@@ -533,6 +539,7 @@ export default function App() {
                 receiptUrl: receiptUrl || undefined,
                 editReason: editReason || undefined
               });
+              opsCompleted++;
             } else {
               // Nova loja para o grupo (ex: mudou de 3 para 5 lojas)
               await addExpense({
@@ -547,6 +554,7 @@ export default function App() {
                 originalTotal: totalVal,
                 receiptUrl: receiptUrl || undefined
               });
+              opsCompleted++;
             }
           }
 
@@ -554,11 +562,12 @@ export default function App() {
           const removedSiblings = existingSiblings.filter(s => !targetStores.includes(s.store as any));
           for (const rem of removedSiblings) {
             await deleteExpense(rem.id, editReason || "Ajuste de lojas na edição do grupo", activeEmployeeName);
+            opsCompleted++;
           }
 
-          // Auditoria
+          // Auditoria (aguardada para não virar unhandled rejection)
           if (prev) {
-            logAuditEvent({
+            await logAuditEvent({
               actionType: 'EDIT',
               actionDate: new Date().toISOString(),
               userName: sessionUser?.name || 'Administrador',
@@ -590,6 +599,7 @@ export default function App() {
 
           showToast(`Lançamento e valores corrigidos para todas as ${entries.length} lojas do grupo ${store}!`, "success");
           editingGroupSiblings.current = [];
+          revealSavedExpense(date);
           resetForm();
         } else {
           // Lançamento individual para uma única loja
@@ -605,15 +615,17 @@ export default function App() {
             receiptUrl: receiptUrl || undefined,
             editReason: editReason || undefined
           });
+          opsCompleted++;
 
           // Se anteriormente fazia parte de um grupo e foi alterado para loja individual, remover os outros irmãos
           const otherSiblings = editingGroupSiblings.current.filter(s => s.id !== editingId);
           for (const sib of otherSiblings) {
             await deleteExpense(sib.id, editReason || "Desagrupamento na edição para loja individual", activeEmployeeName);
+            opsCompleted++;
           }
 
           if (prev) {
-            logAuditEvent({
+            await logAuditEvent({
               actionType: 'EDIT',
               actionDate: new Date().toISOString(),
               userName: sessionUser?.name || 'Administrador',
@@ -645,6 +657,7 @@ export default function App() {
 
           showToast("Lançamento atualizado e registrado na auditoria!");
           editingGroupSiblings.current = [];
+          revealSavedExpense(date);
           resetForm();
         }
       } else {
@@ -664,16 +677,24 @@ export default function App() {
             receiptUrl: receiptUrl || undefined
           };
           await addExpense(newDoc);
+          opsCompleted++;
         }
         showToast(entries.length > 1 ? `${entries.length} despesas geradas!` : "Despesa salva!");
+        revealSavedExpense(date);
         resetForm();
       }
     } catch (error) {
-      showToast("Erro ao salvar", "error");
+      console.error('Erro ao salvar despesa:', error);
+      if (opsCompleted > 0) {
+        // Falha parcial: parte do grupo foi gravada — usuário precisa conferir
+        showToast(`Erro após ${opsCompleted} operação(ões) concluída(s) — verifique os valores do lançamento.`, "error");
+      } else {
+        showToast("Erro ao salvar", "error");
+      }
     } finally {
       setIsSubmitting(false);
     }
-  }, [isSubmitting, sessionUser, settings.employeeName, amount, date, description, store, category, notes, receiptUrl, editingId, editReason, updateExpense, addExpense, deleteExpense, expenses, resetForm, showToast]);
+  }, [isSubmitting, sessionUser, settings.employeeName, amount, date, description, store, category, notes, receiptUrl, editingId, editReason, updateExpense, addExpense, deleteExpense, expenses, resetForm, showToast, revealSavedExpense]);
 
   // Handle Edit Click (Opens Edit Password Modal)
   const handleEditClick = useCallback((ex: Expense) => {
@@ -683,38 +704,48 @@ export default function App() {
   }, []);
 
   // Confirm Edit Password
-  const confirmEditPassword = useCallback(() => {
-    if (!validateAdminPassword(editPasswordInput)) {
-      showToast("Senha incorreta.", "error");
-      return;
-    }
+  const isEditConfirmingRef = useRef(false); // guarda anti duplo-submissão
+  const confirmEditPassword = useCallback(async () => {
+    if (isEditConfirmingRef.current) return;
+    isEditConfirmingRef.current = true;
+    try {
+      if (!(await validateAdminPassword(editPasswordInput))) {
+        showToast("Senha incorreta.", "error");
+        return;
+      }
 
-    if (editPasswordModal.expense) {
-      const ex = editPasswordModal.expense;
-      originalExpenseForAudit.current = ex;
+      if (editPasswordModal.expense) {
+        const ex = editPasswordModal.expense;
+        originalExpenseForAudit.current = ex;
 
-      // Detecta se a despesa pertence a um grupo rateado (Todas, Piracicaba, Amparo)
-      const groupInfo = detectExpenseGroup(ex, expenses);
-      editingGroupSiblings.current = groupInfo.siblings;
+        // Detecta se a despesa pertence a um grupo rateado (Todas, Piracicaba, Amparo)
+        const groupInfo = detectExpenseGroup(ex, expenses);
+        editingGroupSiblings.current = groupInfo.siblings;
 
-      setEditingId(ex.id);
-      setDate(ex.date);
-      setDescription(ex.description);
-      setStore(groupInfo.isGroup && groupInfo.groupName ? groupInfo.groupName : ex.store);
-      setCategory(ex.category);
-      setAmount(formatCurrency(groupInfo.totalAmount));
-      setNotes(ex.notes || '');
-      setReceiptUrl(ex.receiptUrl || undefined);
-      setEditPasswordModal({ open: false, expense: null });
-      setEditPasswordInput('');
-      setCurrentView('dashboard');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      showToast(
-        groupInfo.isGroup && groupInfo.groupName
-          ? `Modo de edição: grupo ${groupInfo.groupName} carregado com valor total!`
-          : "Modo de edição liberado!",
-        "info"
-      );
+        setEditingId(ex.id);
+        setDate(ex.date);
+        setDescription(ex.description);
+        setStore(groupInfo.isGroup && groupInfo.groupName ? groupInfo.groupName : ex.store);
+        setCategory(ex.category);
+        // Só carrega o total do grupo quando a loja carregada É o grupo;
+        // caso contrário (groupName null com originalTotal), usar o valor
+        // individual — senão salvar gravaria o total inteiro em 1 loja.
+        setAmount(formatCurrency(groupInfo.isGroup && groupInfo.groupName ? groupInfo.totalAmount : ex.amount));
+        setNotes(ex.notes || '');
+        setReceiptUrl(ex.receiptUrl || undefined);
+        setEditPasswordModal({ open: false, expense: null });
+        setEditPasswordInput('');
+        setCurrentView('dashboard');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        showToast(
+          groupInfo.isGroup && groupInfo.groupName
+            ? `Modo de edição: grupo ${groupInfo.groupName} carregado com valor total!`
+            : "Modo de edição liberado!",
+          "info"
+        );
+      }
+    } finally {
+      isEditConfirmingRef.current = false;
     }
   }, [editPasswordInput, editPasswordModal.expense, expenses, showToast]);
 
@@ -735,8 +766,10 @@ export default function App() {
   }, [deleteReason, showToast]);
 
   // Confirm Delete Password & Log Audit (Soft Delete)
+  const isDeletingRef = useRef(false); // guarda anti duplo-submissão
   const confirmDeletePassword = useCallback(async () => {
-    if (!validateAdminPassword(deletePasswordInput)) {
+    if (isDeletingRef.current) return; // clique duplo não exclui 2x nem duplica auditoria
+    if (!(await validateAdminPassword(deletePasswordInput))) {
       showToast("Senha incorreta.", "error");
       return;
     }
@@ -749,32 +782,39 @@ export default function App() {
         return;
       }
 
-      await deleteExpense(ex.id, deleteReason, sessionUser?.name || 'Administrador');
+      isDeletingRef.current = true;
+      try {
+        await deleteExpense(ex.id, deleteReason, sessionUser?.name || 'Administrador');
 
-      // Grava auditoria de exclusão com motivo
-      logAuditEvent({
-        actionType: 'DELETE',
-        actionDate: new Date().toISOString(),
-        userName: sessionUser?.name || 'Administrador',
-        userEmail: sessionUser?.email || '',
-        expenseId: ex.id,
-        reason: deleteReason,
-        previousData: {
-          description: ex.description,
-          store: ex.store,
-          category: ex.category,
-          amount: ex.amount,
-          date: ex.date,
-          notes: ex.notes,
-          employeeName: ex.employeeName,
-          receiptUrl: ex.receiptUrl
-        }
-      });
+        // Grava auditoria de exclusão com motivo (aguardada — toast só se confirmou)
+        await logAuditEvent({
+          actionType: 'DELETE',
+          actionDate: new Date().toISOString(),
+          userName: sessionUser?.name || 'Administrador',
+          userEmail: sessionUser?.email || '',
+          expenseId: ex.id,
+          reason: deleteReason,
+          previousData: {
+            description: ex.description,
+            store: ex.store,
+            category: ex.category,
+            amount: ex.amount,
+            date: ex.date,
+            notes: ex.notes,
+            employeeName: ex.employeeName,
+            receiptUrl: ex.receiptUrl
+          }
+        });
 
-      setDeleteModal({ open: false, step: 'confirm', expense: null });
-      setDeletePasswordInput('');
-      setDeleteReason('');
-      showToast("Lançamento excluído e registrado na auditoria!", "success");
+        setDeleteModal({ open: false, step: 'confirm', expense: null });
+        setDeletePasswordInput('');
+        setDeleteReason('');
+        showToast("Lançamento excluído e registrado na auditoria!", "success");
+      } catch (error) {
+        showToast("Erro ao excluir lançamento. Tente novamente.", "error");
+      } finally {
+        isDeletingRef.current = false;
+      }
     }
   }, [deletePasswordInput, deleteModal.expense, deleteReason, canDelete, deleteExpense, sessionUser, showToast]);
 
@@ -787,13 +827,23 @@ export default function App() {
       showToast("Backup restaurado com sucesso!");
     } catch (error) {
       showToast("Erro ao restaurar backup", "error");
+    } finally {
+      // Permite selecionar o MESMO arquivo novamente (senão o onChange não dispara)
+      e.target.value = '';
     }
   };
 
   const handleSaveBackup = async () => {
-    await saveToComputer(expenses, checks);
-    setShowBackupOptions(false);
-    showToast("Backup salvo!");
+    try {
+      await saveToComputer(expenses, checks);
+      setShowBackupOptions(false);
+      showToast("Backup salvo!");
+    } catch (error) {
+      // Erro real do seletor de arquivo (permissão, disco...) — não fechar
+      // o modal nem mostrar "salvo" quando não salvou
+      console.error('Erro ao salvar backup:', error);
+      showToast("Erro ao salvar o backup. Verifique as permissões do navegador.", "error");
+    }
   };
 
   const handleExportCSV = () => {
@@ -864,17 +914,6 @@ export default function App() {
 
   const handleEmptyStateRestore = () => {
     if (fileInputRef.current) fileInputRef.current.click();
-  };
-
-  // View titles
-  const viewTitles: Record<ViewMode, string> = {
-    dashboard: "Visão Geral",
-    calendar: "Calendário",
-    analytics: "Análise & Métricas",
-    closing: "Fechamento Consolidado",
-    payments: "Pagamentos Fixos",
-    audit: "Registros & Auditoria",
-    todo: "Tarefas & To-Do"
   };
 
   // Render sort icon in table headers

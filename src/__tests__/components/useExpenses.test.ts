@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useExpenses, splitExpense, validateAdminPassword } from '@/features/expenses/hooks/useExpenses';
+import { validateAnyAdminPassword } from '@/features/auth';
 import type { Expense } from '@/shared/types';
 import { Timestamp } from 'firebase/firestore';
+
+// A validação de senha agora é assíncrona e consult o Firestore — o teste
+// isola a delegação (a implementação real é coberta em authService.test.ts)
+vi.mock('@/features/auth', () => ({
+  validateAnyAdminPassword: vi.fn(),
+}));
 
 vi.mock('@/config/firebase', () => ({
   getFirebaseRefs: vi.fn(() => ({
@@ -288,19 +295,19 @@ describe('splitExpense', () => {
 });
 
 describe('validateAdminPassword', () => {
-  it('should return true for correct password', () => {
-    expect(validateAdminPassword('#Banana@10')).toBe(true);
+  it('delega para a validação assíncrona (Firestore)', async () => {
+    vi.mocked(validateAnyAdminPassword).mockResolvedValueOnce(true);
+    await expect(validateAdminPassword('senha-admin')).resolves.toBe(true);
+    expect(validateAnyAdminPassword).toHaveBeenCalledWith('senha-admin');
   });
 
-  it('should return false for incorrect password', () => {
-    expect(validateAdminPassword('wrong-password')).toBe(false);
+  it('retorna false quando o Firestore nega', async () => {
+    vi.mocked(validateAnyAdminPassword).mockResolvedValueOnce(false);
+    await expect(validateAdminPassword('senha-errada')).resolves.toBe(false);
   });
 
-  it('should return false for empty password', () => {
-    expect(validateAdminPassword('')).toBe(false);
-  });
-
-  it('should be case sensitive', () => {
-    expect(validateAdminPassword('#banana@10')).toBe(false);
+  it('propaga falha de rede como rejeição (validação não falha abrindo)', async () => {
+    vi.mocked(validateAnyAdminPassword).mockRejectedValueOnce(new Error('rede fora'));
+    await expect(validateAdminPassword('x')).rejects.toThrow('rede fora');
   });
 });
