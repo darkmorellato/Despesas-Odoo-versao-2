@@ -35,20 +35,22 @@ export const AuditManager: React.FC = () => {
         return false;
       }
 
-      // Search query
+      // Search query (com guards: docs legados podem ter campos ausentes)
       if (searchTerm.trim()) {
         const query = searchTerm.toLowerCase();
         const prev = item.previousData;
         const next = item.newData;
+        const contains = (v?: string) => (v ?? '').toLowerCase().includes(query);
         return (
-          item.userName.toLowerCase().includes(query) ||
-          item.userEmail.toLowerCase().includes(query) ||
-          prev.description.toLowerCase().includes(query) ||
-          prev.store.toLowerCase().includes(query) ||
-          prev.category.toLowerCase().includes(query) ||
-          (next && next.description.toLowerCase().includes(query)) ||
-          (next && next.store.toLowerCase().includes(query)) ||
-          (next && next.category.toLowerCase().includes(query))
+          contains(item.userName) ||
+          contains(item.userEmail) ||
+          contains(item.reason) ||
+          contains(prev?.description) ||
+          contains(prev?.store) ||
+          contains(prev?.category) ||
+          contains(next?.description) ||
+          contains(next?.store) ||
+          contains(next?.category)
         );
       }
 
@@ -58,6 +60,7 @@ export const AuditManager: React.FC = () => {
 
   const editCount = useMemo(() => logs.filter(l => l.actionType === 'EDIT').length, [logs]);
   const deleteCount = useMemo(() => logs.filter(l => l.actionType === 'DELETE').length, [logs]);
+  const restoreCount = useMemo(() => logs.filter(l => l.actionType === 'RESTORE').length, [logs]);
 
   return (
     <div className="space-y-6 fade-in">
@@ -84,7 +87,8 @@ export const AuditManager: React.FC = () => {
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold text-slate-600 bg-white px-3 py-1.5 rounded-lg border border-slate-200 shadow-xs flex items-center gap-1.5">
               <Shield className="w-3.5 h-3.5 text-amber-600" />
-              <span>{logs.length} eventos registrados</span>
+              {/* A consulta limita a 100 eventos — não é o total histórico */}
+              <span>{logs.length} eventos exibidos (últimos 100)</span>
             </span>
           </div>
         </div>
@@ -96,7 +100,7 @@ export const AuditManager: React.FC = () => {
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total de Auditorias</p>
                 <h4 className="text-2xl font-bold text-slate-950 mt-1 tabular-nums">{logs.length}</h4>
-                <p className="text-xs text-slate-500 mt-1 font-medium">Lançamentos monitorados</p>
+                <p className="text-xs text-slate-500 mt-1 font-medium">Lançamentos monitorados (últimos 100)</p>
               </div>
               <div className="p-3 bg-white rounded-xl border border-slate-200 text-slate-700 shadow-xs">
                 <History className="w-5 h-5" />
@@ -174,6 +178,16 @@ export const AuditManager: React.FC = () => {
               >
                 Exclusões ({deleteCount})
               </button>
+              <button
+                onClick={() => setFilterType('RESTORE')}
+                className={`flex-1 sm:flex-none px-3 py-1 text-xs font-semibold rounded-md transition-all cursor-pointer ${
+                  filterType === 'RESTORE'
+                    ? 'bg-emerald-600 text-white font-bold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Restaurações ({restoreCount})
+              </button>
             </div>
           </div>
 
@@ -192,36 +206,53 @@ export const AuditManager: React.FC = () => {
             <div className="space-y-3">
               {filteredLogs.map(item => {
                 const isDelete = item.actionType === 'DELETE';
+                const isRestore = item.actionType === 'RESTORE';
                 const prev = item.previousData;
                 const next = item.newData;
+                // Guardas: doc legado/incompleto não pode derrubar a árvore
+                // (não há ErrorBoundary no main.tsx)
+                const userName = item.userName || '—';
+                const userEmail = item.userEmail || '';
+
+                const actionLabel = isDelete
+                  ? 'Exclusão'
+                  : isRestore
+                  ? 'Restauração'
+                  : 'Edição';
+                const actionIcon = isDelete ? <Trash2 className="w-3 h-3" /> : isRestore ? <Check className="w-3 h-3" /> : <Edit className="w-3 h-3" />;
+
+                const badgeTone = isDelete
+                  ? 'bg-rose-50 text-rose-700 border-rose-200'
+                  : isRestore
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  : 'bg-amber-50 text-amber-800 border-amber-200';
+                const cardTone = isDelete
+                  ? 'bg-white border-rose-200/80 hover:border-rose-300 shadow-xs'
+                  : isRestore
+                  ? 'bg-white border-emerald-200/80 hover:border-emerald-300 shadow-xs'
+                  : 'bg-white border-amber-200/80 hover:border-amber-300 shadow-xs';
 
                 return (
                   <div
                     key={item.id}
-                    className={`p-4 sm:p-5 rounded-2xl border transition-all ${
-                      isDelete
-                        ? 'bg-white border-rose-200/80 hover:border-rose-300 shadow-xs'
-                        : 'bg-white border-amber-200/80 hover:border-amber-300 shadow-xs'
-                    }`}
+                    className={`p-4 sm:p-5 rounded-2xl border transition-all ${cardTone}`}
                   >
                     {/* Top row: Badge, User & Timestamp */}
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
                       <div className="flex items-center gap-2.5">
                         <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1.5 border ${
-                            isDelete
-                              ? 'bg-rose-50 text-rose-700 border-rose-200'
-                              : 'bg-amber-50 text-amber-800 border-amber-200'
-                          }`}
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider inline-flex items-center gap-1.5 border ${badgeTone}`}
                         >
-                          {isDelete ? <Trash2 className="w-3 h-3" /> : <Edit className="w-3 h-3" />}
-                          {isDelete ? 'Exclusão' : 'Edição'}
+                          {actionIcon}
+                          {actionLabel}
                         </span>
 
                         <div className="flex items-center gap-1 text-xs text-slate-700 font-medium">
                           <User className="w-3.5 h-3.5 text-slate-400" />
-                          <strong className="text-slate-900">{item.userName}</strong>
-                          <span className="text-slate-400 text-[11px]">({item.userEmail})</span>
+                          <strong className="text-slate-900">{userName}</strong>
+                          {userEmail && (
+                            <span className="text-slate-400 text-[11px]">({userEmail})</span>
+                          )}
                         </div>
                       </div>
 
@@ -241,11 +272,16 @@ export const AuditManager: React.FC = () => {
                         </div>
                       )}
 
-                      {isDelete ? (
-                        /* Deleted Item Info */
-                        <div className="bg-rose-50/40 border border-rose-100 p-3.5 rounded-xl">
-                          <p className="text-[10px] uppercase font-bold text-rose-600 tracking-wider mb-1.5">
-                            Dados do Item Excluído:
+                      {!prev ? (
+                        /* Doc antigo sem dados anteriores — mostra aviso em vez de crashar */
+                        <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-xl text-xs text-slate-500 italic">
+                          Dados anteriores indisponíveis para este registro.
+                        </div>
+                      ) : isDelete || isRestore ? (
+                        /* Deleted/Restored Item Info */
+                        <div className={`p-3.5 rounded-xl border ${isRestore ? 'bg-emerald-50/40 border-emerald-100' : 'bg-rose-50/40 border-rose-100'}`}>
+                          <p className={`text-[10px] uppercase font-bold tracking-wider mb-1.5 ${isRestore ? 'text-emerald-600' : 'text-rose-600'}`}>
+                            {isRestore ? 'Dados do Item Restaurado:' : 'Dados do Item Excluído:'}
                           </p>
                           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                             <div>
@@ -258,11 +294,11 @@ export const AuditManager: React.FC = () => {
                             </div>
                             <div>
                               <span className="text-slate-400 text-[10px] block uppercase font-bold">Data Original</span>
-                              <span className="font-medium text-slate-700">{formatDateBR(prev.date)}</span>
+                              <span className="font-medium text-slate-700">{prev.date ? formatDateBR(prev.date) : '—'}</span>
                             </div>
                             <div>
                               <span className="text-slate-400 text-[10px] block uppercase font-bold">Valor</span>
-                              <span className="font-bold text-rose-700 tabular-nums">
+                              <span className={`font-bold tabular-nums ${isRestore ? 'text-emerald-700' : 'text-rose-700'}`}>
                                 R$ {formatCurrency(prev.amount)}
                               </span>
                             </div>

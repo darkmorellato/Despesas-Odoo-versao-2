@@ -1,8 +1,17 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { getFirebaseRefs } from '@/config/firebase';
 import type { FixedNotification } from '@/shared/types';
 import type { User } from 'firebase/auth';
-import { onSnapshot, setDoc, deleteDoc, doc, serverTimestamp, getDocs, query, where } from 'firebase/firestore';
+import {
+  onSnapshot,
+  setDoc,
+  deleteDoc,
+  doc,
+  serverTimestamp,
+  type QuerySnapshot,
+  type DocumentData,
+  type FirestoreError,
+} from 'firebase/firestore';
 
 // Helper para formatar mensagem de erro amigável
 const getErrorMessage = (e: unknown, acao: string): string => {
@@ -59,35 +68,45 @@ export const useFixedPayments = (user: User | null): UseFixedPaymentsReturn => {
 
   const firebaseRefs = useMemo(() => getFirebaseRefs(), []);
 
+  // Espelho síncrono do estado: permite rollback pontual sem closure obsoleto
+  const paymentsRef = useRef(payments);
+  useEffect(() => {
+    paymentsRef.current = payments;
+  }, [payments]);
+
+  // Persistência centralizada: um único caminho de gravação no localStorage
+  // (antes cada handler gravava à parte e um rollback podia regravar estado velho)
+  useEffect(() => {
+    saveToLocalStorage(payments);
+  }, [payments]);
+
   useEffect(() => {
     if (!user) {
+      // Mantém o cache local visível (modo offline) — limpar aqui apagaria o
+      // cache no mount, antes do sign-in anônimo resolver.
       setIsLoading(false);
       setSyncStatus('offline');
-      console.log('🔴 Pagamentos: Usuário não autenticado - Modo offline');
       return;
     }
 
     setSyncStatus('syncing');
     setIsLoading(true);
-    console.log('🟡 Pagamentos: Iniciando sincronização com Firestore...');
 
     const unsubscribe = onSnapshot(
       firebaseRefs.fixedPaymentsRef,
-      (snapshot: any) => {
-        const loadedPayments = snapshot.docs.map((docSnap: any) => ({
+      (snapshot: QuerySnapshot<DocumentData>) => {
+        const loadedPayments = snapshot.docs.map((docSnap) => ({
           ...(docSnap.data() || {}),
           id: docSnap.id
         })) as FixedNotification[];
 
-        console.log(`🟢 Pagamentos: Recebidos ${loadedPayments.length} documentos do Firestore`);
-
-        // Exibe estritamente o que está no Firestore
+        // Exibe estritamente o que está no Firestore (o efeito [payments]
+        // cuida do cache local)
         setPayments(loadedPayments);
-        saveToLocalStorage(loadedPayments);
         setSyncStatus('synced');
         setIsLoading(false);
       },
-      (err: any) => {
+      (err: FirestoreError) => {
         console.error("❌ Erro ao carregar pagamentos fixos:", err);
         setSyncStatus('error');
         setIsLoading(false);
@@ -95,7 +114,6 @@ export const useFixedPayments = (user: User | null): UseFixedPaymentsReturn => {
     );
 
     return () => {
-      console.log('🔌 Pagamentos: Desconectando listener...');
       unsubscribe();
     };
   }, [user, firebaseRefs.fixedPaymentsRef]);
@@ -103,11 +121,10 @@ export const useFixedPayments = (user: User | null): UseFixedPaymentsReturn => {
   const addPayment = useCallback(async (payment: Omit<FixedNotification, 'id'>) => {
     const docId = `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const newPayment = { id: docId, ...payment } as FixedNotification;
-    const previousPayments = payments;
-    const updatedPayments = [...payments, newPayment];
 
-    setPayments(updatedPayments);
-    saveToLocalStorage(updatedPayments);
+    // Otimista com FUNCTIONAL update — não fecha sobre o estado do render,
+    // então duas operações no mesmo tick não se sobrescrevem
+    setPayments(prev => [...prev, newPayment]);
 
     try {
       setSyncStatus('syncing');
@@ -119,19 +136,21 @@ export const useFixedPayments = (user: User | null): UseFixedPaymentsReturn => {
       setSyncStatus('synced');
     } catch (e: unknown) {
       console.error('❌ Erro ao adicionar pagamento:', e);
-      setPayments(previousPayments);
-      saveToLocalStorage(previousPayments);
+      // Rollback cirúrgico: remove SÓ o item que falhou (o rollback antigo
+      // restaurava o closure inteiro e desfazia operações concorrentes boas)
+      setPayments(prev => prev.filter(p => p.id !== docId));
       setSyncStatus('error');
       throw new Error(getErrorMessage(e, 'adicionar pagamento'));
     }
-  }, [payments, firebaseRefs.fixedPaymentsRef]);
+  }, [firebaseRefs.fixedPaymentsRef]);
 
   const updatePayment = useCallback(async (id: string, updates: Partial<FixedNotification>) => {
-    const previousPayments = payments;
-    const updatedPayments = payments.map(p => p.id === id ? { ...p, ...updates } : p) as FixedNotification[];
+    // Snapshot dos valores antigos (apenas para rollback pontual)
+    const before = paymentsRef.current.find(p => p.id === id);
 
-    setPayments(updatedPayments);
-    saveToLocalStorage(updatedPayments);
+    setPayments(prev =>
+      prev.map(p => (p.id === id ? { ...p, ...updates } : p)) as FixedNotification[]
+    );
 
     try {
       setSyncStatus('syncing');
@@ -143,63 +162,41 @@ export const useFixedPayments = (user: User | null): UseFixedPaymentsReturn => {
       setSyncStatus('synced');
     } catch (e: unknown) {
       console.error('❌ Erro ao atualizar pagamento:', e);
-      setPayments(previousPayments);
-      saveToLocalStorage(previousPayments);
+      // Reverte apenas os campos alterados DESTE item
+      if (before) {
+        setPayments(prev =>
+          prev.map(p => (p.id === id ? { ...p, ...before } : p)) as FixedNotification[]
+        );
+      }
       setSyncStatus('error');
       throw new Error(getErrorMessage(e, 'atualizar pagamento'));
     }
-  }, [payments, firebaseRefs.fixedPaymentsRef]);
+  }, [firebaseRefs.fixedPaymentsRef]);
 
   const deletePayment = useCallback(async (id: string) => {
-    const target = payments.find(p => p.id === id);
-    const previousPayments = payments;
+    const before = paymentsRef.current.find(p => p.id === id);
 
-    // Atualização otimista: remove pelo ID e também por dia+descrição se houver registros repetidos
-    const updatedPayments = payments.filter(p => {
-      if (p.id === id) return false;
-      if (target && p.day === target.day && p.description.trim().toLowerCase() === target.description.trim().toLowerCase()) {
-        return false;
-      }
-      return true;
-    });
-
-    setPayments(updatedPayments);
-    saveToLocalStorage(updatedPayments);
+    // Remove APENAS pelo id. A exclusão em cascata por dia+descrição (local
+    // normalizado × query exata no servidor) foi removida: destruía
+    // duplicatas legítimas sem confirmação e, pela divergência de
+    // normalização, o item "voltava da morte" no próximo snapshot.
+    setPayments(prev => prev.filter(p => p.id !== id));
 
     try {
       setSyncStatus('syncing');
       const docRef = doc(firebaseRefs.fixedPaymentsRef, id);
       await deleteDoc(docRef);
-
-      // Limpeza de segurança no Firestore para eliminar qualquer cópia residual com a mesma descrição e dia
-      if (target) {
-        try {
-          const q = query(
-            firebaseRefs.fixedPaymentsRef,
-            where('day', '==', target.day),
-            where('description', '==', target.description)
-          );
-          const dupSnap = await getDocs(q);
-          const extraDeletes = dupSnap.docs
-            .filter((d: any) => d.id !== id)
-            .map((d: any) => deleteDoc(doc(firebaseRefs.fixedPaymentsRef, d.id)));
-          if (extraDeletes.length > 0) {
-            await Promise.all(extraDeletes);
-          }
-        } catch (queryErr) {
-          console.warn('Aviso ao verificar duplicatas no Firestore:', queryErr);
-        }
-      }
-
       setSyncStatus('synced');
     } catch (e: unknown) {
       console.error('❌ Erro ao excluir pagamento:', e);
-      setPayments(previousPayments);
-      saveToLocalStorage(previousPayments);
+      // Restaura somente o item removido (ordem é reconciliada pelo snapshot)
+      if (before) {
+        setPayments(prev => [...prev, before]);
+      }
       setSyncStatus('error');
       throw new Error(getErrorMessage(e, 'excluir pagamento'));
     }
-  }, [payments, firebaseRefs.fixedPaymentsRef]);
+  }, [firebaseRefs.fixedPaymentsRef]);
 
   const getPaymentsByDay = useCallback((day: number): FixedNotification[] => {
     return payments.filter(p => p.day === day);

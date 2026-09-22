@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import type { CategoryName } from '@/shared/types';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import type { CategoryName, Expense } from '@/shared/types';
 
 interface Budget {
   category: CategoryName;
@@ -15,20 +15,49 @@ interface UseBudgetsReturn {
   getTotalBudget: () => number;
 }
 
-export const useBudgets = (expenses: any[]): UseBudgetsReturn => {
+// Chave com namespace do app (a antiga 'budgets' era genérica demais e
+// podia colidir com outros códigos no mesmo domínio)
+const STORAGE_KEY = 'miplace_budgets_v1';
+const LEGACY_STORAGE_KEY = 'budgets';
+
+export const useBudgets = (expenses: Expense[]): UseBudgetsReturn => {
   const [budgets, setBudgets] = useState<Budget[]>(() => {
-    const saved = localStorage.getItem('budgets');
-    if (saved) {
-      return JSON.parse(saved);
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // JSON válido mas não-array quebrava .find/.reduce no render
+        if (Array.isArray(parsed)) {
+          return parsed.filter(
+            (b): b is Budget =>
+              !!b && typeof b === 'object' && typeof b.category === 'string' && typeof b.limit === 'number'
+          );
+        }
+      }
+    } catch (e) {
+      // JSON corrompido: NÃO regrava por cima nesta etapa — o primeiro save
+      // é pulado abaixo, preservando o valor original para diagnóstico.
+      console.warn('Orçamentos locais inválidos — usando lista vazia:', e);
     }
     return [];
   });
 
+  // Evita que o efeito de save sobrescreva o storage logo no mount
+  // (destruiria um settings corrompido com o valor padrão)
+  const loadedRef = useRef(false);
   useEffect(() => {
-    localStorage.setItem('budgets', JSON.stringify(budgets));
+    if (!loadedRef.current) {
+      loadedRef.current = true;
+      return;
+    }
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(budgets));
+    } catch {
+      // storage cheio/indisponível — ignora
+    }
   }, [budgets]);
 
-  const setBudget = (category: CategoryName, limit: number) => {
+  const setBudget = useCallback((category: CategoryName, limit: number) => {
     setBudgets(prev => {
       const existing = prev.find(b => b.category === category);
       if (existing) {
@@ -36,30 +65,35 @@ export const useBudgets = (expenses: any[]): UseBudgetsReturn => {
       }
       return [...prev, { category, limit, spent: 0 }];
     });
-  };
+  }, []);
 
-  const getBudgetStatus = (category: CategoryName): 'ok' | 'warning' | 'exceeded' => {
+  const getBudgetStatus = useCallback((category: CategoryName): 'ok' | 'warning' | 'exceeded' => {
     const budget = budgets.find(b => b.category === category);
-    if (!budget) return 'ok';
+    // Sem orçamento OU limite 0: tratado como "sem alerta" — antes a divisão
+    // por zero gerava Infinity/NaN e `NaN >= 100` caía em 'ok' escondendo
+    // um estouro real.
+    if (!budget || !(budget.limit > 0)) return 'ok';
 
     const spent = expenses
       .filter(e => e.category === category)
-      .reduce((sum, e) => sum + e.amount, 0);
+      .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
     const percentage = (spent / budget.limit) * 100;
 
     if (percentage >= 100) return 'exceeded';
     if (percentage >= 80) return 'warning';
     return 'ok';
-  };
+    // NOTA (decisão de produto): `spent` soma TODO o histórico, não só o mês.
+    // Se o limite for mensal, trate como orçamento acumulado — revisar com o time.
+  }, [budgets, expenses]);
 
-  const getTotalSpent = () => {
-    return expenses.reduce((sum, e) => sum + e.amount, 0);
-  };
+  const getTotalSpent = useCallback(() => {
+    return expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
+  }, [expenses]);
 
-  const getTotalBudget = () => {
+  const getTotalBudget = useCallback(() => {
     return budgets.reduce((sum, b) => sum + b.limit, 0);
-  };
+  }, [budgets]);
 
   return {
     budgets,
