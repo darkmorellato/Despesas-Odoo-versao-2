@@ -78,11 +78,21 @@ export const getGoogleCalendarUrl = (task: TodoItem): string => {
   const cleanDate = dateBase.replace(/-/g, '');
 
   if (task.dueTime) {
-    const cleanTime = task.dueTime.replace(/:/g, '');
-    const startDateTime = `${cleanDate}T${cleanTime}00`;
-    const [h, m] = task.dueTime.split(':').map(Number);
-    const endH = String((h + 1) % 24).padStart(2, '0');
-    const endDateTime = `${cleanDate}T${endH}${String(m).padStart(2, '0')}00`;
+    // Hora normalizada com zero à esquerda (ex.: '9:30' -> '0930')
+    const [rawH, rawM] = task.dueTime.split(':');
+    const h = parseInt(rawH, 10) || 0;
+    const m = parseInt(rawM, 10) || 0;
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    const startDateTime = `${cleanDate}T${pad2(h)}${pad2(m)}00`;
+    const endH = (h + 1) % 24;
+    // Virada de dia: 23:30 termina às 00:30 do DIA SEGUINTE ((h+1)%24 < h)
+    let endDate = cleanDate;
+    if (endH < h) {
+      const d = new Date(dateBase + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      endDate = `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
+    }
+    const endDateTime = `${endDate}T${pad2(endH)}${pad2(m)}00`;
     datesParam = `${startDateTime}/${endDateTime}`;
   } else {
     // Evento de dia inteiro
@@ -175,6 +185,17 @@ export const openInGmail = (task: TodoItem): void => {
 };
 
 /**
+ * Escapa texto conforme a RFC 5545 (iCalendar): contrabarra, ponto e vírgula,
+ * vírgula e quebras de linha — obrigatório em SUMMARY, DESCRIPTION e ATTENDEE.
+ */
+const escapeIcsText = (value: string): string =>
+  String(value)
+    .replace(/\\/g, '\\\\')
+    .replace(/;/g, '\\;')
+    .replace(/,/g, '\\,')
+    .replace(/\r\n|\r|\n/g, '\\n');
+
+/**
  * Faz download do arquivo iCalendar (.ics) compatível com qualquer calendário (Google Calendar, Apple, Outlook)
  */
 export const downloadIcsFile = (task: TodoItem): void => {
@@ -184,11 +205,22 @@ export const downloadIcsFile = (task: TodoItem): void => {
   let dtEnd = `${cleanDate}`;
 
   if (task.dueTime) {
-    const cleanTime = task.dueTime.replace(/:/g, '');
-    dtStart = `${cleanDate}T${cleanTime}00`;
-    const [h, m] = task.dueTime.split(':').map(Number);
-    const endH = String((h + 1) % 24).padStart(2, '0');
-    dtEnd = `${cleanDate}T${endH}${String(m).padStart(2, '0')}00`;
+    // Hora normalizada com zero à esquerda (ex.: '9:30' -> '0930')
+    const [rawH, rawM] = task.dueTime.split(':');
+    const h = parseInt(rawH, 10) || 0;
+    const m = parseInt(rawM, 10) || 0;
+    const pad2 = (n: number) => String(n).padStart(2, '0');
+    dtStart = `${cleanDate}T${pad2(h)}${pad2(m)}00`;
+    const endH = (h + 1) % 24;
+    // Virada de dia: 23:30 gera DTEND 00:30 no DIA SEGUINTE ((h+1)%24 < h),
+    // nunca antes do horário de início
+    let endDateStr = cleanDate;
+    if (endH < h) {
+      const d = new Date(dateBase + 'T00:00:00');
+      d.setDate(d.getDate() + 1);
+      endDateStr = `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}`;
+    }
+    dtEnd = `${endDateStr}T${pad2(endH)}${pad2(m)}00`;
   }
 
   let rrule = '';
@@ -208,9 +240,9 @@ export const downloadIcsFile = (task: TodoItem): void => {
     `DTSTART:${dtStart}`,
     `DTEND:${dtEnd}`,
     rrule ? rrule.trim() : null,
-    `SUMMARY:📋 ${task.title}`,
-    `DESCRIPTION:${(task.notes || task.title).replace(/\n/g, '\\n')}`,
-    task.assignedTo ? `ATTENDEE;CN=${task.assignedToName || task.assignedTo}:mailto:${task.assignedTo}` : null,
+    `SUMMARY:📋 ${escapeIcsText(task.title)}`,
+    `DESCRIPTION:${escapeIcsText(task.notes || task.title)}`,
+    task.assignedTo ? `ATTENDEE;CN=${escapeIcsText(task.assignedToName || task.assignedTo)}:mailto:${task.assignedTo}` : null,
     'STATUS:CONFIRMED',
     'END:VEVENT',
     'END:VCALENDAR'

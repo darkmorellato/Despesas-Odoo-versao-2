@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import type { Expense } from '@/shared/types';
 import { STORE_IMAGES, STORES_LIST } from '@/config/constants';
 import { formatCurrency, formatMonthBR, getTodayLocal } from '@/shared/utils/formatters';
@@ -28,6 +28,20 @@ export const MonthlyClosingView: React.FC<MonthlyClosingViewProps> = ({
     if (availableMonths.length > 0) return availableMonths[0];
     return getTodayLocal().substring(0, 7);
   });
+
+  // Ressincroniza a seleção: quando o mês escolhido deixar de existir em
+  // availableMonths (dados carregados/removidos), seleciona o mais recente.
+  useEffect(() => {
+    if (availableMonths.length > 0 && !availableMonths.includes(selectedMonth)) {
+      setSelectedMonth(availableMonths[0]);
+    }
+  }, [availableMonths, selectedMonth]);
+
+  // Índice do mês selecionado: -1 quando o mês ainda não está na lista
+  // (estado transitório) — nesse caso a navegação fica desabilitada.
+  const selectedMonthIndex = availableMonths.indexOf(selectedMonth);
+  const canGoToPrevMonth = selectedMonthIndex >= 0 && selectedMonthIndex < availableMonths.length - 1;
+  const canGoToNextMonth = selectedMonthIndex > 0;
 
   // Mês anterior para comparação
   const previousMonth = useMemo(() => {
@@ -142,11 +156,10 @@ export const MonthlyClosingView: React.FC<MonthlyClosingViewProps> = ({
             <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
               <button
                 onClick={() => {
-                  const idx = availableMonths.indexOf(selectedMonth);
-                  if (idx < availableMonths.length - 1) setSelectedMonth(availableMonths[idx + 1]);
+                  if (canGoToPrevMonth) setSelectedMonth(availableMonths[selectedMonthIndex + 1]);
                 }}
-                disabled={availableMonths.indexOf(selectedMonth) >= availableMonths.length - 1}
-                className="p-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 rounded cursor-pointer"
+                disabled={!canGoToPrevMonth}
+                className="p-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 disabled:cursor-not-allowed rounded cursor-pointer"
                 title="Mês Anterior"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -156,11 +169,10 @@ export const MonthlyClosingView: React.FC<MonthlyClosingViewProps> = ({
               </span>
               <button
                 onClick={() => {
-                  const idx = availableMonths.indexOf(selectedMonth);
-                  if (idx > 0) setSelectedMonth(availableMonths[idx - 1]);
+                  if (canGoToNextMonth) setSelectedMonth(availableMonths[selectedMonthIndex - 1]);
                 }}
-                disabled={availableMonths.indexOf(selectedMonth) <= 0}
-                className="p-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 rounded cursor-pointer"
+                disabled={!canGoToNextMonth}
+                className="p-1.5 text-slate-500 hover:text-slate-900 disabled:opacity-30 disabled:cursor-not-allowed rounded cursor-pointer"
                 title="Próximo Mês"
               >
                 <ChevronRight className="w-4 h-4" />

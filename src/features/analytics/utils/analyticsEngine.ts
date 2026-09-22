@@ -9,6 +9,7 @@ export interface AnalyticsStats {
   yearlyData: any[];
   years: string[];
   monthChange: number;
+  hasPrevMonth: boolean;
   monthsCount: number;
 }
 
@@ -137,8 +138,20 @@ export const generateAnalyticsStats = (expenses: Expense[]): AnalyticsStats | nu
   const avgPerMonth = months.length > 0 ? total / months.length : 0;
 
   const lastMonthData = monthlyData[0];
-  const prevMonthData = monthlyData[1];
-  const monthChange = prevMonthData?.total > 0
+  // Compara com o mês CALENDARIALMENTE anterior (ano/mês anterior de verdade).
+  // Usar simplesmente monthlyData[1] seria incorreto: pode não ser um mês
+  // consecutivo quando existem meses sem lançamentos no meio do período.
+  let prevMonthData: { total: number } | undefined;
+  if (lastMonthData) {
+    const [y, m] = String(lastMonthData.month).split('-').map(Number);
+    // new Date com componentes numéricos (data local) — evita o bug de fuso
+    // ao parsear strings 'YYYY-MM-DD'/'YYYY-MM'
+    const prevDate = new Date(y, m - 2, 1);
+    const prevKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+    prevMonthData = byMonth[prevKey];
+  }
+  const hasPrevMonth = !!prevMonthData;
+  const monthChange = prevMonthData && prevMonthData.total > 0
     ? ((lastMonthData.total - prevMonthData.total) / prevMonthData.total) * 100
     : 0;
 
@@ -151,6 +164,7 @@ export const generateAnalyticsStats = (expenses: Expense[]): AnalyticsStats | nu
     yearlyData,
     years,
     monthChange,
+    hasPrevMonth,
     monthsCount: months.length
   };
 };

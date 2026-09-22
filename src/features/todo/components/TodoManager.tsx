@@ -46,7 +46,8 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
   showToast,
   todoData: propTodoData
 }) => {
-  const localTodoData = useTodo(employeeName, userEmail);
+  // enabled=false quando todoData (prop) é passado: evita listener/intervalo duplicados (bips duplos)
+  const localTodoData = useTodo(employeeName, userEmail, !propTodoData);
   const {
     todos,
     isLoading,
@@ -128,12 +129,12 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
       case 'planned':
         return result.filter((t) => !t.completed && !!t.dueDate);
       case 'assigned':
+        // Somente tarefas atribuídas/criadas por mim (comparação por e-mail)
         return result.filter(
           (t) =>
             !t.completed &&
             (t.assignedTo?.toLowerCase() === userEmail.toLowerCase() ||
-              t.userEmail.toLowerCase() === userEmail.toLowerCase() ||
-              !!t.assignedTo)
+              t.userEmail.toLowerCase() === userEmail.toLowerCase())
         );
       case 'completed':
         return result.filter((t) => t.completed);
@@ -153,8 +154,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
         (t) =>
           !t.completed &&
           (t.assignedTo?.toLowerCase() === userEmail.toLowerCase() ||
-            t.userEmail.toLowerCase() === userEmail.toLowerCase() ||
-            !!t.assignedTo)
+            t.userEmail.toLowerCase() === userEmail.toLowerCase())
       ).length,
       all: todos.filter((t) => !t.completed).length,
       completed: todos.filter((t) => t.completed).length
@@ -207,6 +207,10 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
       } else {
         showToast('Tarefa adicionada com sucesso! ✨', 'success');
       }
+    } catch (err) {
+      // addTodo propaga erro de persistência: mostra toast e NÃO limpa o form
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(`Erro ao adicionar tarefa: ${msg}`, 'error');
     } finally {
       setIsSubmitting(false);
     }

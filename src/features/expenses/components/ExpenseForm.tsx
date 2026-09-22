@@ -42,6 +42,51 @@ interface ExpenseFormProps {
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
 }
 
+/**
+ * Converte um texto colado no campo de valor em um número monetário,
+ * interpretando o texto segundo a semântica pt-BR:
+ *
+ * - Contendo vírgula: os pontos são separadores de milhar e a vírgula é
+ *   decimal ("1.234,56" -> 1234.56);
+ * - Sem vírgula e com ponto: o ponto é decimal APENAS se houver exatamente
+ *   1 ponto e até 2 dígitos depois ("1234.56" -> 1234.56, "1.234" -> 1234,
+ *   "1.234.567" -> 1234567);
+ * - Sem ponto e sem vírgula: mesma semântica da máscara de digitação
+ *   (os dígitos são centavos, ou seja, divide por 100 — "123456" -> 1234.56),
+ *   mantendo consistência com o que o usuário digita.
+ *
+ * Retorna `null` quando o texto não representa um número válido.
+ */
+export const parsePastedAmount = (raw: string): number | null => {
+  let text = raw.trim().replace(/R\$/gi, '').replace(/[\s\u00A0]/g, '');
+  if (!text) return null;
+
+  const isNegative = text.startsWith('-');
+  if (isNegative) text = text.slice(1);
+  if (!text) return null;
+
+  let valueStr: string;
+  if (text.includes(',')) {
+    // Formato pt-BR explícito: remove separadores de milhar e troca vírgula por ponto
+    valueStr = text.replace(/\./g, '').replace(',', '.');
+  } else if (text.includes('.')) {
+    const segments = text.split('.');
+    const lastSegment = segments[segments.length - 1];
+    const isDecimal = segments.length === 2 && lastSegment.length <= 2;
+    valueStr = isDecimal ? text : text.replace(/\./g, '');
+  } else {
+    // Sem separadores: aplica a mesma semântica da máscara (dígitos / 100)
+    const digits = text.replace(/\D/g, '');
+    if (!digits) return null;
+    const value = parseInt(digits, 10) / 100;
+    return isNegative ? -value : value;
+  }
+
+  const value = parseFloat(valueStr);
+  if (isNaN(value)) return null;
+  return isNegative ? -value : value;
+};
+
 export const ExpenseForm: React.FC<ExpenseFormProps> = ({
   date,
   setDate,
@@ -66,6 +111,7 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({
   showToast
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
   const [isCompressingReceipt, setIsCompressingReceipt] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -87,9 +133,8 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({
   const handleAmountPaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
     const pasted = e.clipboardData.getData('text');
     if (!pasted) return;
-    const normalized = pasted.trim().replace(/\./g, '').replace(',', '.');
-    const num = parseFloat(normalized);
-    if (!isNaN(num) && num > 0) {
+    const num = parsePastedAmount(pasted);
+    if (num !== null && num > 0) {
       e.preventDefault();
       setAmount(
         new Intl.NumberFormat('pt-BR', {
@@ -160,6 +205,9 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({
       if (item.type.startsWith('image/') || item.type === 'application/pdf') {
         const file = item.getAsFile();
         if (file) {
+          // Impede a propagação para o listener global de `paste` em window,
+          // que caso contrário processaria o MESMO arquivo uma 2ª vez
+          e.stopPropagation();
           e.preventDefault();
           processFile(file);
           return;
@@ -171,8 +219,20 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({
   // Listener global para capturar Ctrl+V com imagem da área de transferência
   useEffect(() => {
     const handleGlobalPaste = (e: ClipboardEvent) => {
-      const target = e.target as HTMLElement;
-      const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
+      const target = e.target as HTMLElement | null;
+
+      // Eventos originados dentro do formulário já são tratados pelo onPaste
+      // do próprio formulário (que chama stopPropagation ao processar)
+      if (target && formRef.current && formRef.current.contains(target)) return;
+
+      // Não intercepta colagem em campos de texto (input/textarea/contenteditable)
+      const isTextInput = !!target && (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      );
+      if (isTextInput) return;
+
       const items = e.clipboardData?.items;
       if (!items) return;
 
@@ -233,7 +293,7 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({
       </div>
 
       <div className="p-6 sm:p-8">
-        <form onSubmit={onSubmit} className="space-y-6">
+        <form ref={formRef} onSubmit={onSubmit} className="space-y-6">
           {/* Divisão: 70% Lado Esquerdo (Inputs) e 30% Lado Direito (Comprovante) */}
           <div className="grid grid-cols-1 lg:grid-cols-10 gap-6 items-stretch">
             

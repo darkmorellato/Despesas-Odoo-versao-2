@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useCalendar } from './useCalendar';
-import { onSnapshot, setDoc } from 'firebase/firestore';
+import { onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
 import { getFixedPayments } from '@/features/fixed-payments/hooks/useFixedPayments';
 import type { User } from 'firebase/auth';
 
@@ -14,7 +14,8 @@ vi.mock('firebase/firestore', async (importOriginal) => {
   return {
     ...actual,
     onSnapshot: vi.fn(() => vi.fn()),
-    setDoc: vi.fn()
+    setDoc: vi.fn(),
+    updateDoc: vi.fn()
   };
 });
 
@@ -155,13 +156,13 @@ describe('useCalendar', () => {
     expect(Array.isArray(pendingPayments)).toBe(true);
   });
 
-  it('deve salvar checks no Firebase após delay', async () => {
+  it('deve salvar checks no Firebase com uma única escrita (updateDoc)', async () => {
     vi.mocked(onSnapshot).mockImplementation((ref: any, cb: any) => {
       cb({ exists: () => false });
       return vi.fn();
     });
 
-    (setDoc as any).mockResolvedValue(undefined);
+    (updateDoc as any).mockResolvedValue(undefined);
 
     const { result } = renderHook(() => useCalendar(mockUser));
 
@@ -177,7 +178,38 @@ describe('useCalendar', () => {
       vi.advanceTimersByTime(800);
     });
 
-    expect(setDoc).toHaveBeenCalled();
+    // Uma única escrita, atualizando somente o campo da chave alterada
+    expect(setDoc).not.toHaveBeenCalled();
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    const updatePayload = (updateDoc as any).mock.calls[0][1];
+    expect(updatePayload).toEqual({ 'checks.2024-0-Aluguel': true });
     vi.useRealTimers();
+  });
+
+  it('deve aplicar vários checks com uma única escrita (setManyChecks)', async () => {
+    vi.mocked(onSnapshot).mockImplementation((ref: any, cb: any) => {
+      cb({ exists: () => false });
+      return vi.fn();
+    });
+
+    (updateDoc as any).mockResolvedValue(undefined);
+
+    const { result } = renderHook(() => useCalendar(mockUser));
+
+    act(() => {
+      result.current.setManyChecks([
+        { key: '2024-0-Aluguel', status: true },
+        { key: '2024-0-Energia', status: true }
+      ]);
+    });
+
+    expect(result.current.checks['2024-0-Aluguel']).toBe(true);
+    expect(result.current.checks['2024-0-Energia']).toBe(true);
+    expect(updateDoc).toHaveBeenCalledTimes(1);
+    const updatePayload = (updateDoc as any).mock.calls[0][1];
+    expect(updatePayload).toEqual({
+      'checks.2024-0-Aluguel': true,
+      'checks.2024-0-Energia': true
+    });
   });
 });

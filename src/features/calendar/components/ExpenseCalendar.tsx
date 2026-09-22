@@ -24,12 +24,14 @@ import type { TodoItem } from '@/features/todo/types';
 import { openGoogleCalendar, openInGmail } from '@/features/todo/utils/calendarIntegration';
 import { getCachedTodos, updateTodoDoc } from '@/features/todo/services/todoService';
 import { playTodoAlertSound, playSynthesizedBeep } from '@/shared/utils/audio';
-import { normalizeTaskDescription } from '../hooks/useCalendar';
+import { normalizeTaskDescription, getCalendarBatchWriter } from '../hooks/useCalendar';
 
 export interface ExpenseCalendarProps {
   fixedPayments: FixedNotification[];
   checkedState: Record<string, boolean>;
   onToggleCheck: (key: string, status: boolean) => void;
+  /** Escrita em lote opcional (ex.: `setManyChecks` do useCalendar) — UMA única escrita no Firestore */
+  setManyChecks?: (entries: { key: string; status: boolean }[]) => void;
   showToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
   syncError?: string | null;
   todos?: TodoItem[];
@@ -40,6 +42,7 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
   fixedPayments,
   checkedState,
   onToggleCheck,
+  setManyChecks,
   showToast,
   syncError,
   todos: propTodos,
@@ -48,17 +51,8 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
   const FIXED_NOTIFICATIONS = fixedPayments;
   const [currentDate, setCurrentDate] = useState(new Date());
   const [zoomLevel, setZoomLevel] = useState(1);
-  const [selectedDayFilter, setSelectedDayFilter] = useState<number | null>(() => {
-    const today = new Date().getDate();
-    if (today >= 1 && today <= 4) return 29;
-    if (today >= 5 && today <= 9) return 5;
-    if (today >= 10 && today <= 14) return 10;
-    if (today >= 15 && today <= 19) return 15;
-    if (today >= 20 && today <= 24) return 20;
-    if (today >= 25 && today <= 26) return 25;
-    if (today >= 27 && today <= 28) return 27;
-    return 29;
-  });
+  // Sem filtro por padrão: a lista de pagamentos fica visível desde o início
+  const [selectedDayFilter, setSelectedDayFilter] = useState<number | null>(null);
   const [confirmPayModal, setConfirmPayModal] = useState<{ open: boolean; desc: string | null }>({
     open: false,
     desc: null
@@ -97,8 +91,12 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
     const nextCompleted = !target.completed;
     const completedAt = nextCompleted ? new Date().toISOString() : undefined;
 
-    if (nextCompleted) playTodoAlertSound();
-    else playSynthesizedBeep();
+    // Toca o som APENAS no caminho local: quando delegamos para `onToggleTodo`
+    // o useTodo.toggleComplete já reproduz o alerta (evita som duplicado)
+    if (!onToggleTodo) {
+      if (nextCompleted) playTodoAlertSound();
+      else playSynthesizedBeep();
+    }
 
     setInternalTodos((prev) =>
       prev.map((t) => (t.id === id ? { ...t, completed: nextCompleted, completedAt } : t))
@@ -117,6 +115,12 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
 
+  // "Hoje" calculado uma única vez por render — evita ~62 `new Date()` por
+  // iteração do grid a cada toggle/interação
+  const todayDate = new Date();
+  const todayDayOfMonth = todayDate.getDate();
+  const isCurrentMonthToday = month === todayDate.getMonth() && year === todayDate.getFullYear();
+
   // Tarefas To-Do com data de vencimento dentro do mês/ano exibido
   const monthTodos = useMemo(() => {
     const list = internalTodos;
@@ -130,6 +134,28 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
     const targetDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDayFilter).padStart(2, '0')}`;
     return monthTodos.filter((t) => t.dueDate === targetDateStr);
   }, [monthTodos, year, month, selectedDayFilter]);
+
+  // Índices memoizados por dia: evita refiltrar as listas a cada toggle
+  const paymentsByDay = useMemo(() => {
+    const map: Record<number, FixedNotification[]> = {};
+    FIXED_NOTIFICATIONS
+      .filter(n => !n.months || n.months.includes(month + 1))
+      .forEach(n => {
+        if (!map[n.day]) map[n.day] = [];
+        map[n.day].push(n);
+      });
+    return map;
+  }, [FIXED_NOTIFICATIONS, month]);
+
+  const todosByDay = useMemo(() => {
+    const map: Record<string, TodoItem[]> = {};
+    monthTodos.forEach(t => {
+      if (!t.dueDate) return;
+      if (!map[t.dueDate]) map[t.dueDate] = [];
+      map[t.dueDate].push(t);
+    });
+    return map;
+  }, [monthTodos]);
 
   const handlePrevMonth = useCallback(() => {
     setCurrentDate(new Date(year, month - 1, 1));
@@ -149,12 +175,8 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
   ];
 
   const setCheckStatus = useCallback((desc: string, status: boolean) => {
-    const rawKey = `${year}-${month}-${desc}`;
-    const normKey = `${year}-${month}-${normalizeTaskDescription(desc)}`;
-    onToggleCheck(rawKey, status);
-    if (normKey !== rawKey) {
-      onToggleCheck(normKey, status);
-    }
+    // UMA única chamada: a normalização da chave acontece apenas no hook
+    onToggleCheck(`${year}-${month}-${desc}`, status);
   }, [year, month, onToggleCheck]);
 
   const initiatePayment = useCallback((desc: string) => {
@@ -174,8 +196,9 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
     setFixPassword('');
   }, []);
 
-  const confirmFix = useCallback(() => {
-    if (validateAnyAdminPassword(fixPassword)) {
+  const confirmFix = useCallback(async () => {
+    // Validação assíncrona contra o Firestore (nenhuma senha no cliente)
+    if (await validateAnyAdminPassword(fixPassword)) {
       if (fixModal.desc) {
         setCheckStatus(fixModal.desc, false);
         setFixModal({ open: false, desc: null });
@@ -270,7 +293,9 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
     return filteredNotifications.filter(item => {
       const rawKey = `${year}-${month}-${item.description}`;
       const normKey = `${year}-${month}-${normalizeTaskDescription(item.description)}`;
-      return !(checkedState[rawKey] || checkedState[normKey]);
+      // Compat com dados antigos: chave normalizada tem precedência;
+      // a chave "crua" (legada) entra como fallback
+      return !(checkedState[normKey] ?? checkedState[rawKey]);
     });
   }, [filteredNotifications, year, month, checkedState]);
 
@@ -289,15 +314,26 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
   }, [pendingNotifications, selectedDayFilter, showToast]);
 
   const confirmSelectAll = useCallback(() => {
-    confirmSelectAllModal.items.forEach(item => {
-      setCheckStatus(item.description, true);
-    });
-    const count = confirmSelectAllModal.items.length;
+    const items = confirmSelectAllModal.items;
+    // UMA única escrita no Firestore: usa a função em lote do hook
+    // (prop `setManyChecks` quando o App a passar, senão o escritor registrado
+    // pelo useCalendar). O fallback só roda sem o hook disponível (ex.: testes).
+    const entries = items.map(item => ({
+      key: `${year}-${month}-${item.description}`,
+      status: true
+    }));
+    const batchWriter = setManyChecks ?? getCalendarBatchWriter();
+    if (batchWriter) {
+      batchWriter(entries);
+    } else {
+      entries.forEach(entry => onToggleCheck(entry.key, entry.status));
+    }
+    const count = items.length;
     setConfirmSelectAllModal({ open: false, day: null, count: 0, items: [] });
     if (showToast) {
       showToast(`${count} pagamento(s) confirmado(s) como pago(s)!`, "success");
     }
-  }, [confirmSelectAllModal.items, setCheckStatus, showToast]);
+  }, [confirmSelectAllModal.items, year, month, setManyChecks, onToggleCheck, showToast]);
 
   return (
     <div className="bg-white rounded-2xl overflow-hidden fade-in flex flex-col relative border border-slate-200/90 shadow-sm">
@@ -341,8 +377,8 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
             </p>
 
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-48 overflow-y-auto text-left text-xs space-y-1.5 mb-6">
-              {confirmSelectAllModal.items.map((it, idx) => (
-                <div key={idx} className="flex items-center justify-between text-slate-700 py-1 border-b border-slate-100 last:border-0">
+              {confirmSelectAllModal.items.map((it) => (
+                <div key={it.id ?? `${it.day}-${it.description}`} className="flex items-center justify-between text-slate-700 py-1 border-b border-slate-100 last:border-0">
                   <span className="truncate font-medium">{it.description}</span>
                   <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full shrink-0 ml-2">
                     Dia {it.day}
@@ -606,17 +642,14 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
             ))}
             {Array.from({ length: daysInMonth }).map((_, i) => {
               const day = i + 1;
-              const isToday = day === new Date().getDate() && 
-                             month === new Date().getMonth() && 
-                             year === new Date().getFullYear();
+              const isToday = isCurrentMonthToday && day === todayDayOfMonth;
               const dayPad = String(day).padStart(2, '0');
               const monthPad = String(month + 1).padStart(2, '0');
               const dayStr = `${year}-${monthPad}-${dayPad}`;
-              const dayTodos = monthTodos.filter(t => t.dueDate === dayStr);
+              const dayTodos = todosByDay[dayStr] ?? [];
+              const dayPayments = paymentsByDay[day] ?? [];
 
-              const hasNotification = FIXED_NOTIFICATIONS.some(
-                n => n.day === day && (!n.months || n.months.includes(month + 1))
-              );
+              const hasNotification = dayPayments.length > 0;
               const hasActiveItems = hasNotification || dayTodos.some(t => !t.completed);
 
               return (
@@ -646,11 +679,9 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
                   {(hasNotification || dayTodos.length > 0) && (
                     <div className="flex-1 overflow-y-auto space-y-1 mt-1">
                       {/* Pagamentos Fixos */}
-                      {FIXED_NOTIFICATIONS.filter(
-                        n => n.day === day && (!n.months || n.months.includes(month + 1))
-                      ).map((note, idx) => (
+                      {dayPayments.map((note) => (
                         <div
-                          key={`note-${idx}`}
+                          key={note.id ?? `note-${note.day}-${note.description}`}
                           className={`bg-slate-100/90 border border-slate-200 text-slate-800 px-1.5 py-0.5 rounded font-medium truncate ${zoomStyles.textSize}`}
                           title={`Pagamento: ${note.description}`}
                         >
@@ -802,14 +833,16 @@ export const ExpenseCalendar: React.FC<ExpenseCalendarProps> = memo(({
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {filteredNotifications.map((item, idx) => {
+                  {filteredNotifications.map((item) => {
                     const rawKey = `${year}-${month}-${item.description}`;
                     const normKey = `${year}-${month}-${normalizeTaskDescription(item.description)}`;
-                    const isChecked = !!(checkedState[rawKey] || checkedState[normKey]);
+                    // Compat com dados antigos: chave normalizada tem precedência;
+                    // a chave "crua" (legada) entra como fallback
+                    const isChecked = !!(checkedState[normKey] ?? checkedState[rawKey]);
 
                     return (
                       <div
-                        key={idx}
+                        key={item.id ?? `${item.day}-${item.description}`}
                         className={`flex items-center gap-3.5 p-3.5 rounded-xl transition-all duration-200 border ${
                           isChecked
                             ? 'bg-slate-50 border-slate-200 opacity-60'

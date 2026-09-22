@@ -62,6 +62,7 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
   const [lastSyncTime, setLastSyncTime] = useState<Date | null>(null);
 
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const dropdownInputRef = useRef<HTMLInputElement>(null);
   const [showDropdown, setShowDropdown] = useState(false);
   const [useCustomDate, setUseCustomDate] = useState(false);
   const [formData, setFormData] = useState<{
@@ -80,6 +81,14 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
       setLastSyncTime(new Date());
     }
   }, [syncStatus]);
+
+  // Foca o campo de descrição quando o dropdown abre (o `autoFocus` direto não
+  // funciona porque o dropdown fica `invisible`/oculto quando fechado)
+  useEffect(() => {
+    if (showDropdown) {
+      dropdownInputRef.current?.focus();
+    }
+  }, [showDropdown]);
 
   const toggleDay = useCallback((day: number) => {
     setExpandedDays(prev => {
@@ -113,6 +122,19 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
     setModalOpen(true);
   }, []);
 
+  // Fecha o dropdown descartando qualquer edição pendente — evita que um
+  // próximo "Novo Pagamento Fixo" edite o pagamento anterior por engano
+  const closeDropdown = useCallback(() => {
+    setShowDropdown(false);
+    setEditingPayment(null);
+  }, []);
+
+  // Fecha o modal de adicionar/editar sem deixar `editingPayment` residual
+  const closeAddEditModal = useCallback(() => {
+    setModalOpen(false);
+    setEditingPayment(null);
+  }, []);
+
   const handleEditClick = useCallback((payment: FixedNotification) => {
     setPasswordModal({ open: true, type: 'edit', payment });
     setPasswordInput('');
@@ -124,31 +146,40 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
   }, []);
 
   const handlePasswordConfirm = useCallback(async () => {
-    if (!validateAnyAdminPassword(passwordInput)) {
+    // Guarda anti duplo-submissão
+    if (isSubmitting) return;
+
+    if (!(await validateAnyAdminPassword(passwordInput))) {
       showToast('Senha incorreta.', 'error');
       return;
     }
 
-    if (passwordModal.type === 'edit' && passwordModal.payment && passwordModal.payment.id) {
-      openEditModal(passwordModal.payment);
-    } else if (passwordModal.type === 'delete' && passwordModal.payment && passwordModal.payment.id) {
-      try {
-        await deletePayment(passwordModal.payment.id);
-        showToast('Pagamento excluído com sucesso!', 'success');
-      } catch (error) {
-        const msg = error instanceof Error ? error.message : 'Erro ao excluir pagamento';
-        showToast(msg, 'error');
+    setIsSubmitting(true);
+    try {
+      if (passwordModal.type === 'edit' && passwordModal.payment && passwordModal.payment.id) {
+        openEditModal(passwordModal.payment);
+      } else if (passwordModal.type === 'delete' && passwordModal.payment && passwordModal.payment.id) {
+        try {
+          await deletePayment(passwordModal.payment.id);
+          showToast('Pagamento excluído com sucesso!', 'success');
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : 'Erro ao excluir pagamento';
+          showToast(msg, 'error');
+        }
       }
+      setPasswordModal({ open: false, type: 'edit', payment: null });
+      setPasswordInput('');
+    } finally {
+      setIsSubmitting(false);
     }
-    setPasswordModal({ open: false, type: 'edit', payment: null });
-    setPasswordInput('');
-  }, [passwordInput, passwordModal, deletePayment, showToast, openEditModal]);
+  }, [isSubmitting, passwordInput, passwordModal, deletePayment, showToast, openEditModal]);
 
-  // Fechar modais com tecla ESC
+  // Fechar modais/dropdown com tecla ESC
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (modalOpen) setModalOpen(false);
+        if (modalOpen) closeAddEditModal();
+        if (showDropdown) closeDropdown();
         if (passwordModal.open) {
           setPasswordModal({ open: false, type: 'edit', payment: null });
           setPasswordInput('');
@@ -157,7 +188,7 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [modalOpen, passwordModal.open]);
+  }, [modalOpen, showDropdown, passwordModal.open, closeAddEditModal, closeDropdown]);
 
   const handleSave = useCallback(async () => {
     if (!formData.description.trim()) {
@@ -204,9 +235,15 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
     });
   }, []);
 
-  const toggleDropdown = useCallback(() => {
-    setShowDropdown(prev => !prev);
-  }, []);
+  // Botão "Novo Pagamento Fixo": ao abrir, SEMPRE reseta o formulário e
+  // cancela qualquer edição pendente (evita salvar por cima do pagamento antigo)
+  const handleNewPaymentClick = useCallback(() => {
+    if (showDropdown) {
+      closeDropdown();
+      return;
+    }
+    openAddModal();
+  }, [showDropdown, closeDropdown, openAddModal]);
 
   const groupedPayments = useMemo(() => {
     const days = getUniqueDays();
@@ -214,7 +251,14 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
       day,
       payments: getPaymentsByDay(day),
     }));
-  }, [getUniqueDays, getPaymentsByDay]);
+  }, [getUniqueDays, getPaymentsByDay, payments]);
+
+  // Dias disponíveis no select: inclui o dia atual do formulário caso não
+  // esteja na lista fixa (ex.: dia 30/31) para não exibir uma opção errada
+  const dayOptions = useMemo(() => {
+    if (PAYMENT_DAYS.includes(formData.day)) return PAYMENT_DAYS;
+    return [...PAYMENT_DAYS, formData.day].sort((a, b) => a - b);
+  }, [formData.day]);
 
   const totalPayments = payments.length;
 
@@ -271,7 +315,7 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
         <div className="relative">
           <button
             ref={buttonRef}
-            onClick={toggleDropdown}
+            onClick={handleNewPaymentClick}
             className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold rounded-lg text-xs transition-all shadow-sm cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -279,21 +323,21 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
             <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
           </button>
 
-          {/* Dropdown Menu */}
+          {/* Dropdown Menu — `invisible` quando fechado para não ficar focável/navegável por Tab */}
           <div
             className={`
               absolute top-full right-0 mt-2 w-[380px] sm:w-[420px] bg-white border border-slate-200 rounded-2xl p-5 z-[99999]
               shadow-2xl origin-top-right transform transition-all duration-300
               ${showDropdown
-                ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto'
-                : 'opacity-0 scale-95 -translate-y-2 pointer-events-none'
+                ? 'opacity-100 scale-100 translate-y-0 pointer-events-auto visible'
+                : 'opacity-0 scale-95 -translate-y-2 pointer-events-none invisible'
               }
             `}
           >
             <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
               <h4 className="text-sm font-bold text-slate-900 tracking-tight">Novo Pagamento Fixo</h4>
               <button
-                onClick={() => setShowDropdown(false)}
+                onClick={closeDropdown}
                 className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-all"
               >
                 <X className="w-4 h-4" />
@@ -306,11 +350,11 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
                 <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5">Descrição</label>
                 <input
                   type="text"
+                  ref={dropdownInputRef}
                   value={formData.description}
                   onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
                   className="liquid-input w-full px-3 py-2 rounded-lg text-xs font-medium"
                   placeholder="Ex: Aluguel Loja Premium, Contabilidade..."
-                  autoFocus
                 />
               </div>
 
@@ -416,7 +460,7 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
 
             <div className="flex gap-2 mt-5 pt-3 border-t border-slate-100">
               <button
-                onClick={() => setShowDropdown(false)}
+                onClick={closeDropdown}
                 className="flex-1 py-2 bg-slate-100 text-slate-700 font-semibold rounded-lg hover:bg-slate-200 transition-all text-xs"
               >
                 Cancelar
@@ -515,7 +559,7 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
       {modalOpen && (
         <div
           className="fixed inset-0 z-[9999] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
-          onClick={() => setModalOpen(false)}
+          onClick={closeAddEditModal}
         >
           <div
             className="bg-white border border-slate-200 w-full max-w-md rounded-2xl p-6 text-center animate-in fade-in shadow-2xl"
@@ -569,7 +613,7 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
                     onChange={e => setFormData(prev => ({ ...prev, day: parseInt(e.target.value) }))}
                     className="liquid-input w-full px-3 py-2 rounded-lg text-xs font-medium"
                   >
-                    {PAYMENT_DAYS.map(d => (
+                    {dayOptions.map(d => (
                       <option key={d} value={d}>Dia {d}</option>
                     ))}
                   </select>
@@ -619,7 +663,7 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
 
             <div className="flex gap-2.5 mt-6 pt-3 border-t border-slate-100">
               <button
-                onClick={() => setModalOpen(false)}
+                onClick={closeAddEditModal}
                 className="flex-1 py-2.5 bg-slate-100 border border-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-200 transition-all text-xs cursor-pointer"
               >
                 Cancelar
@@ -671,7 +715,8 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
               </button>
               <button
                 onClick={handlePasswordConfirm}
-                className="flex-1 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold rounded-lg transition-all text-xs cursor-pointer shadow-sm"
+                disabled={isSubmitting}
+                className="flex-1 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold rounded-lg transition-all text-xs cursor-pointer shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 Confirmar
               </button>

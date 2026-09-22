@@ -1,16 +1,36 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { getFirebaseRefs } from '@/config/firebase';
-import { onSnapshot, setDoc } from 'firebase/firestore';
+import { onSnapshot, updateDoc } from 'firebase/firestore';
 import type { User } from 'firebase/auth';
 import type { CalendarCheck, FixedNotification } from '@/shared/types';
+
+export interface CalendarCheckEntry {
+  key: string;
+  status: boolean;
+}
 
 interface UseCalendarReturn {
   checks: CalendarCheck;
   isLoading: boolean;
   toggleCheck: (key: string, status: boolean) => void;
+  setManyChecks: (entries: CalendarCheckEntry[]) => void;
   getPendingPayments: (payments: FixedNotification[]) => FixedNotification[];
   syncError: string | null;
 }
+
+type BatchWriter = (entries: CalendarCheckEntry[]) => void;
+
+// Escritor em lote registrado pela instância ativa do hook. Permite que
+// componentes (ex.: ExpenseCalendar — "Selecionar Todos") executem UMA única
+// escrita no Firestore sem precisar receber a função por props (o App.tsx não
+// precisa ser alterado).
+let registeredBatchWriter: BatchWriter | null = null;
+
+const registerBatchWriter = (writer: BatchWriter | null) => {
+  registeredBatchWriter = writer;
+};
+
+export const getCalendarBatchWriter = (): BatchWriter | null => registeredBatchWriter;
 
 const LOCAL_STORAGE_KEY = 'odoo_fast_calendar_checks';
 
@@ -69,6 +89,19 @@ export const normalizeTaskDescription = (desc: string): string => {
   return DESCRIPTION_MAP[desc] || desc;
 };
 
+/**
+ * Normaliza uma chave de check para o formato canônico
+ * `${ano}-${mês}-${descrição normalizada}`. Chaves antigas já normalizadas
+ * (ou sem descrição reconhecida) são devolvidas inalteradas.
+ */
+export const normalizeCheckKey = (key: string): string => {
+  const parts = key.split('-');
+  if (parts.length < 3) return key;
+  const [year, month, ...rest] = parts;
+  const desc = rest.join('-');
+  return `${year}-${month}-${normalizeTaskDescription(desc)}`;
+};
+
 const saveToLocalStorage = (checks: CalendarCheck) => {
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(checks));
@@ -94,8 +127,24 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
 
   const firebaseRefs = useMemo(() => getFirebaseRefs(), []);
 
+  // Espelho síncrono do estado: usado para capturar o valor ANTERIOR de cada
+  // chave (rollback por chave) sem depender do `checks` do closure do render.
+  const checksRef = useRef<CalendarCheck>(checks);
+
+  useEffect(() => {
+    checksRef.current = checks;
+  }, [checks]);
+
+  // Persiste localmente sempre que o mapa de checks muda
+  // (sincronização do Firebase, otimismo local e rollback)
+  useEffect(() => {
+    saveToLocalStorage(checks);
+  }, [checks]);
+
   useEffect(() => {
     if (!user) {
+      // Sem autenticação não há checklist a exibir/persistir
+      setChecks({});
       setIsLoading(false);
       return;
     }
@@ -110,7 +159,6 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
           const firebaseChecks = data.checks || {};
 
           setChecks(firebaseChecks);
-          saveToLocalStorage(firebaseChecks);
           console.log('📥 Calendário: Dados sincronizados do Firebase —', Object.keys(firebaseChecks).length, 'checks');
         } else {
           setChecks({});
@@ -133,26 +181,29 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
     return () => unsubscribe();
   }, [user, firebaseRefs.checksRef]);
 
-  const toggleCheck = useCallback(async (key: string, status: boolean) => {
-    const parts = key.split('-');
-    let additionalKey: string | null = null;
-    if (parts.length >= 3) {
-      const year = parts[0];
-      const month = parts[1];
-      const desc = parts.slice(2).join('-');
-      const normDesc = normalizeTaskDescription(desc);
-      if (normDesc !== desc) {
-        additionalKey = `${year}-${month}-${normDesc}`;
-      }
-    }
+  // Aplica as entradas no estado (otimista) e grava em UMA única escrita no
+  // Firestore, atualizando somente os campos `checks.<chave>` alterados.
+  // Em caso de erro, restaura APENAS as chaves modificadas nesta operação.
+  const applyEntries = useCallback(async (entries: CalendarCheckEntry[]) => {
+    if (entries.length === 0) return;
 
-    const newChecks = {
-      ...checks,
-      [key]: status,
-      ...(additionalKey ? { [additionalKey]: status } : {})
-    };
-    setChecks(newChecks);
-    saveToLocalStorage(newChecks);
+    // Captura o valor anterior de cada chave ANTES da sobrescrita (rollback)
+    const previous: Record<string, boolean | undefined> = {};
+    const optimistic: CalendarCheck = { ...checksRef.current };
+    entries.forEach(({ key, status }) => {
+      if (!(key in previous)) previous[key] = checksRef.current[key];
+      optimistic[key] = status;
+    });
+
+    checksRef.current = optimistic;
+    // Update funcional: nunca usa o `checks` do closure do render
+    setChecks(prev => {
+      const next = { ...prev };
+      entries.forEach(({ key, status }) => {
+        next[key] = status;
+      });
+      return next;
+    });
 
     if (!user) {
       console.warn('⚠️ Calendário: Usuário não autenticado — alteração salva apenas localmente');
@@ -160,38 +211,94 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
     }
 
     try {
-      await setDoc(firebaseRefs.checksRef, { checks: newChecks }, { merge: true });
-      console.log('✅ Calendário: Check confirmado pelo servidor —', key, '=', status);
+      // Objeto de update multi-campo: só as chaves alteradas (nunca o mapa inteiro)
+      const update: Record<string, boolean> = {};
+      entries.forEach(({ key, status }) => {
+        update[`checks.${key}`] = status;
+      });
+      await updateDoc(firebaseRefs.checksRef, update);
+      console.log('✅ Calendário: Check confirmado pelo servidor —', entries);
       setSyncError(null);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       console.error('❌ Calendário: Erro ao salvar no Firebase:', err);
-      setChecks(checks);
-      saveToLocalStorage(checks);
+      // Rollback por chave: restaura somente o que foi alterado nesta operação
+      const restored: CalendarCheck = { ...checksRef.current };
+      entries.forEach(({ key }) => {
+        const before = previous[key];
+        if (before === undefined) delete restored[key];
+        else restored[key] = before;
+      });
+      checksRef.current = restored;
+      setChecks(prev => {
+        const next = { ...prev };
+        entries.forEach(({ key }) => {
+          const before = previous[key];
+          if (before === undefined) delete next[key];
+          else next[key] = before;
+        });
+        return next;
+      });
       if (errorMsg.includes('quota') || errorMsg.includes('resource-exhausted') || errorMsg.includes('RESOURCE_EXHAUSTED')) {
         setSyncError('⚠️ Cota do Firebase excedida. Tente novamente após as 04:00 da manhã (horário de Brasília).');
       } else {
         setSyncError('Erro ao salvar: ' + errorMsg);
       }
     }
-  }, [checks, user, firebaseRefs.checksRef]);
+  }, [user, firebaseRefs.checksRef]);
+
+  // Uma escrita por toggle: normalização acontece apenas aqui no hook
+  const toggleCheck = useCallback((key: string, status: boolean) => {
+    void applyEntries([{ key: normalizeCheckKey(key), status }]);
+  }, [applyEntries]);
+
+  // Vários checks em UMA única escrita (ex.: "Selecionar Todos")
+  const setManyChecks = useCallback((entries: CalendarCheckEntry[]) => {
+    void applyEntries(entries.map(entry => ({
+      key: normalizeCheckKey(entry.key),
+      status: entry.status
+    })));
+  }, [applyEntries]);
+
+  // Registra o escritor em lote para o ExpenseCalendar usar sem props extras
+  useEffect(() => {
+    registerBatchWriter(setManyChecks);
+    return () => registerBatchWriter(null);
+  }, [setManyChecks]);
 
   const getPendingPayments = useCallback((payments: FixedNotification[]) => {
     const now = new Date();
     const currentDay = now.getDate();
     const currentMonth = now.getMonth();
     const currentYear = now.getFullYear();
+    // Último dia REAL do mês corrente (ex.: fevereiro tem 28/29 dias)
+    const lastDayOfMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
 
     return payments.filter(task => {
       if (task.months && !task.months.includes(currentMonth + 1)) return false;
-      if (task.day > currentDay) return false;
+
+      let dueDay = task.day;
+      if (task.customDate) {
+        const [cy, cm, cd] = task.customDate.split('-').map(Number);
+        if (!isNaN(cy) && !isNaN(cm) && !isNaN(cd)) {
+          // Data personalizada fora do mês corrente não vence agora
+          if (cy !== currentYear || cm !== currentMonth + 1) return false;
+          dueDay = cd;
+        }
+      }
+
+      // Trunca para o último dia real do mês: um vencimento dia 30 em fevereiro
+      // passa a vencer dia 28/29 (senão nunca ficaria pendente no mês)
+      const effectiveDay = Math.min(dueDay, lastDayOfMonth);
+      if (effectiveDay > currentDay) return false;
+
       const rawKey = `${currentYear}-${currentMonth}-${task.description}`;
-      const normalizedDesc = normalizeTaskDescription(task.description);
-      const normKey = `${currentYear}-${currentMonth}-${normalizedDesc}`;
-      const isChecked = !!(checks[rawKey] || checks[normKey]);
-      return !isChecked;
+      const normKey = normalizeCheckKey(rawKey);
+      // Compat com dados antigos: a chave normalizada tem precedência e a
+      // chave "crua" (legada) entra como fallback
+      return !(checks[normKey] ?? checks[rawKey]);
     });
   }, [checks]);
 
-  return { checks, isLoading, toggleCheck, getPendingPayments, syncError };
+  return { checks, isLoading, toggleCheck, setManyChecks, getPendingPayments, syncError };
 };

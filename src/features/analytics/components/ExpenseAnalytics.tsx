@@ -33,6 +33,26 @@ export const ExpenseAnalytics: React.FC<ExpenseAnalyticsProps> = memo(({ expense
 
   const allStats = useMemo(() => generateAnalyticsStats(expenses), [expenses]);
 
+  // Valores defensivos: garantem que TODOS os hooks rodem antes de qualquer
+  // retorno condicional (Rules of Hooks), mesmo sem dados disponíveis.
+  const monthlyData = allStats?.monthlyData ?? [];
+  const years = allStats?.years ?? [];
+
+  // Inicializa/ressincroniza o ano selecionado com os anos disponíveis
+  useEffect(() => {
+    if (viewMode === 'yearly' && years.length > 0 && (!selectedYear || !years.includes(selectedYear))) {
+      setSelectedYear(years[0]);
+    }
+  }, [viewMode, selectedYear, years]);
+
+  // Sanea o índice do mês: mantém selectedMonthIndex dentro do intervalo válido
+  // de monthlyData (evita índice órfão quando os dados mudam/filtram)
+  useEffect(() => {
+    if (monthlyData.length > 0 && (selectedMonthIndex < 0 || selectedMonthIndex >= monthlyData.length)) {
+      setSelectedMonthIndex(Math.min(Math.max(selectedMonthIndex, 0), monthlyData.length - 1));
+    }
+  }, [monthlyData.length, selectedMonthIndex]);
+
   if (!allStats) {
     return (
       <div className="bg-white rounded-2xl p-12 text-center fade-in border border-slate-200/90 shadow-sm">
@@ -51,19 +71,11 @@ export const ExpenseAnalytics: React.FC<ExpenseAnalyticsProps> = memo(({ expense
   const currentMonthData = viewMode === 'monthly' 
     ? allStats.monthlyData[selectedMonthIndex] 
     : null;
-
-  useEffect(() => {
-    if (viewMode === 'yearly' && !selectedYear && allStats.years.length > 0) {
-      setSelectedYear(allStats.years[0]);
-    }
-  }, [viewMode, selectedYear, allStats.years]);
-
-  if (viewMode === 'monthly' && !currentMonthData) return null;
-  if (viewMode === 'yearly' && !currentYearData) return null;
-
-  const activeData = viewMode === 'monthly' ? currentMonthData! : currentYearData!;
-  const maxStoreAmount = activeData.sortedStores[0]?.amount || 1;
-  const maxCategoryAmount = activeData.sortedCategories[0]?.amount || 1;
+  // Pode estar indefinido enquanto o índice/ano é saneado ou quando não há dados
+  // no período selecionado — nesse caso renderizamos a UI de estado vazio abaixo.
+  const activeData = viewMode === 'monthly' ? currentMonthData : currentYearData;
+  const maxStoreAmount = activeData?.sortedStores[0]?.amount || 1;
+  const maxCategoryAmount = activeData?.sortedCategories[0]?.amount || 1;
 
   const handlePrevMonth = () => {
     if (selectedMonthIndex < allStats.monthlyData.length - 1) {
@@ -102,7 +114,7 @@ export const ExpenseAnalytics: React.FC<ExpenseAnalyticsProps> = memo(({ expense
   const circumference = 2 * Math.PI * radius;
 
   let accumulatedPercent = 0;
-  const donutSegments = (activeData.sortedCategories as Array<{ category: string; amount: number; percentage: number }>).map((cat, idx) => {
+  const donutSegments = ((activeData?.sortedCategories ?? []) as Array<{ category: string; amount: number; percentage: number }>).map((cat, idx) => {
     const strokeDasharray = `${(cat.percentage / 100) * circumference} ${circumference}`;
     const strokeDashoffset = -((accumulatedPercent / 100) * circumference);
     accumulatedPercent += cat.percentage;
@@ -167,7 +179,7 @@ export const ExpenseAnalytics: React.FC<ExpenseAnalyticsProps> = memo(({ expense
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <span className="font-bold text-slate-800 px-2 min-w-[110px] text-center text-xs capitalize">
-                  {formatMonthBR(currentMonthData!.month)}
+                  {currentMonthData ? formatMonthBR(currentMonthData.month) : '—'}
                 </span>
                 <button
                   onClick={handleNextMonth}
@@ -187,7 +199,7 @@ export const ExpenseAnalytics: React.FC<ExpenseAnalyticsProps> = memo(({ expense
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <span className="font-bold text-slate-800 px-2 min-w-[80px] text-center text-xs">
-                  {selectedYear || allStats.years[0]}
+                  {selectedYear || allStats.years[0] || '—'}
                 </span>
                 <button
                   onClick={handleNextYear}
@@ -201,6 +213,18 @@ export const ExpenseAnalytics: React.FC<ExpenseAnalyticsProps> = memo(({ expense
           </div>
         </div>
 
+        {/* Sem dados no período selecionado: mantém a navegação visível */}
+        {!activeData && (
+          <div className="p-12 text-center">
+            <div className="w-14 h-14 bg-amber-50 border border-amber-200 rounded-2xl flex items-center justify-center mx-auto mb-4 text-amber-600">
+              <BarChart2 className="w-7 h-7" />
+            </div>
+            <h3 className="text-lg font-bold text-slate-900 tracking-tight">Sem Dados no Período Selecionado</h3>
+            <p className="text-slate-500 text-xs mt-1">Use a navegação acima para escolher outro mês/ano</p>
+          </div>
+        )}
+
+        {activeData && (
         <div className="p-6 sm:p-8 space-y-6">
           {/* Top 3 KPI Summary Cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
@@ -480,14 +504,19 @@ export const ExpenseAnalytics: React.FC<ExpenseAnalyticsProps> = memo(({ expense
                 ) : (
                   <TrendingDown className="w-3.5 h-3.5 text-emerald-700" />
                 )}
-                <p className="text-[10px] font-bold text-slate-600 uppercase">vs Mês Anterior</p>
+                <p className="text-[10px] font-bold text-slate-600 uppercase">
+                  {allStats.hasPrevMonth ? 'vs Mês Anterior' : 'Sem Mês Anterior'}
+                </p>
               </div>
               <p className={`text-base font-bold tabular-nums ${allStats.monthChange >= 0 ? 'text-amber-800' : 'text-emerald-800'}`}>
-                {allStats.monthChange >= 0 ? '+' : ''}{allStats.monthChange.toFixed(1)}%
+                {allStats.hasPrevMonth
+                  ? `${allStats.monthChange >= 0 ? '+' : ''}${allStats.monthChange.toFixed(1)}%`
+                  : '—'}
               </p>
             </div>
           </div>
         </div>
+        )}
       </div>
     </div>
   );
