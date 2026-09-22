@@ -18,10 +18,11 @@ import {
   serverTimestamp 
 } from 'firebase/firestore';
 import type { CollectionReference, DocumentReference, DocumentData } from 'firebase/firestore';
-import { getAnalytics, isSupported } from 'firebase/analytics';
 
 // Your web app's Firebase configuration
 // As credenciais ficam no .env (ignorado pelo Git) — não exponha no código-fonte
+// NOTA: Analytics (measurementId) foi removido — o app não usa métricas de
+// visita e o gtag gerava avisos de cookie no console + ~30KB no bundle.
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBTKRckW0phSEPoDNBwpSeb6rconsokbpI",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "miplace-despesas.firebaseapp.com",
@@ -29,7 +30,6 @@ const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "miplace-despesas.firebasestorage.app",
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "770624075590",
   appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:770624075590:web:297b8650a919818041d747",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-Z33RRM8XPD",
 };
 
 // Initialize Firebase
@@ -51,21 +51,10 @@ try {
 
 export const db = firestoreDb;
 
-// Initialize Analytics (only in browser, e apenas se o navegador suportar)
-if (typeof window !== 'undefined') {
-  isSupported()
-    .then((supported) => {
-      if (!supported) return;
-      try {
-        getAnalytics(app);
-      } catch (err) {
-        console.warn('Firebase Analytics indisponível:', err);
-      }
-    })
-    .catch(() => {
-      // isSupported() rejeitado (ambiente restrito) — ignora silenciosamente
-    });
-}
+// Analytics DESLIGADO de propósito (não usa métricas de visita; evita os
+// avisos de cookie "_ga rejected for invalid domain" e reduz o bundle).
+// Para reativar: import { getAnalytics, isSupported } from 'firebase/analytics'
+// e restaurar measurementId no config acima.
 
 // Re-export Firebase functions
 export { 
