@@ -16,13 +16,14 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // Nunca emitir sourcemaps em produção (evita expor o código-fonte no bundle)
+    sourcemap: false,
     chunkSizeWarningLimit: 500,
     rollupOptions: {
       output: {
         manualChunks: {
           'vendor-react': ['react', 'react-dom'],
-          'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore'],
+          'vendor-firebase': ['firebase/app', 'firebase/auth', 'firebase/firestore', 'firebase/analytics'],
         },
       },
     },
@@ -33,7 +34,8 @@ export default defineConfig({
       'react-dom',
       'firebase/app',
       'firebase/auth',
-      'firebase/firestore'
+      'firebase/firestore',
+      'firebase/analytics'
     ],
   },
 })

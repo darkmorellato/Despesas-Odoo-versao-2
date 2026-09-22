@@ -30,6 +30,8 @@ export const getTodayLocal = (): string => {
  */
 export const formatDateBR = (dateString: string): string => {
   if (!dateString) return "";
+  // Só formata se casar com YYYY-MM-DD... — caso contrário devolve o original
+  if (!/^\d{4}-\d{2}-\d{2}/.test(dateString)) return dateString;
   const [year, month, day] = dateString.split('-');
   return `${day}/${month}/${year}`;
 };
@@ -48,8 +50,13 @@ export const formatDateBR = (dateString: string): string => {
  */
 export const formatMonthBR = (yearMonth: string): string => {
   if (!yearMonth) return "";
-  const [year, month] = yearMonth.split('-');
-  const date = new Date(parseInt(year), parseInt(month) - 1, 1);
+  // Valida o formato antes de parsear — evita NaN/"Invalid Date"
+  const match = /^(\d{4})-(\d{1,2})$/.exec(yearMonth);
+  if (!match) return yearMonth;
+  const year = match[1];
+  const monthIndex = parseInt(match[2], 10) - 1;
+  if (Number.isNaN(monthIndex) || monthIndex < 0 || monthIndex > 11) return yearMonth;
+  const date = new Date(parseInt(year, 10), monthIndex, 1);
   const monthName = date.toLocaleDateString('pt-BR', { month: 'long' });
   return `${monthName.charAt(0).toUpperCase() + monthName.slice(1)} ${year}`;
 };
@@ -69,6 +76,8 @@ export const formatMonthBR = (yearMonth: string): string => {
  * ```
  */
 export const formatCurrency = (value: number): string => {
+  // Protege NaN/Infinity/undefined antes de formatar
+  if (!Number.isFinite(value)) return '—';
   return new Intl.NumberFormat('pt-BR', {
     style: 'decimal',
     minimumFractionDigits: 2,

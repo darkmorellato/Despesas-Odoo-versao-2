@@ -1,0 +1,89 @@
+// =============================================================================
+// Regras de segurança do Firestore — Despesas Miplace
+//
+// IMPORTANTE: as regras antigas NÃO estavam versionadas no repositório (ficavam
+// apenas no console do Firebase), o que tornava qualquer alteração invisível e
+// irreversível. Este arquivo passa a ser a fonte única de verdade — publique com:
+//   firebase deploy --only firestore:rules
+//
+// Todos os caminhos abaixo foram conferidos nos fontes do app (grep por
+// collection( / doc(db ...)):
+//   - src/config/firebase.ts        -> getFirebaseRefs()
+//   - src/features/auth/services/authService.ts
+//   - src/features/todo/{hooks,services}
+//   - src/features/audit/{hooks,services}
+//
+// Observação sobre OR-permissão: regras do Firestore são unidas (qualquer
+// match que concede acesso autoriza). Por isso os caminhos são listados
+// explicitamente em vez de um match recursivo amplo — para que a regra mais
+// restritiva de system_users_v1 não seja anulada por um match genérico.
+// =============================================================================
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // -----------------------------------------------------------------------------
+    // Documento raiz da empresa + subcoleção de despesas
+    // (miplace-despesas/data e miplace-despesas/data/team_expenses_v2)
+    // -----------------------------------------------------------------------------
+    match /miplace-despesas/data {
+      allow read, write: if request.auth != null;
+
+      match /team_expenses_v2/{expenseId} {
+        allow read, write: if request.auth != null;
+      }
+    }
+
+    // -----------------------------------------------------------------------------
+    // Documento de dados da equipe (miplace-despesas/data-team_data) e suas
+    // subcoleções. Qualquer usuário autenticado lê e escreve.
+    // -----------------------------------------------------------------------------
+    match /miplace-despesas/data-team_data {
+      allow read, write: if request.auth != null;
+
+      // Checklist global do calendário (documento único: 'checks')
+      match /global_checklist_v1/{checkId} {
+        allow read, write: if request.auth != null;
+      }
+
+      // Pagamentos fixos
+      match /fixed_payments_v1/{paymentId} {
+        allow read, write: if request.auth != null;
+      }
+
+      // Tarefas (To-Do)
+      match /todo_tasks_v1/{taskId} {
+        allow read, write: if request.auth != null;
+      }
+
+      // Logs de auditoria
+      match /audit_logs_v1/{logId} {
+        allow read, write: if request.auth != null;
+      }
+
+      // Configurações do sistema (reservado — ainda não usado pelo app hoje;
+      // incluído preventivamente para não quebrar em um próximo deploy)
+      match /system_settings_v1/{settingId} {
+        allow read, write: if request.auth != null;
+      }
+
+      // -----------------------------------------------------------------------------
+      // Usuários do sistema: leitura e atualização permitidas para autenticados,
+      // mas CRIAÇÃO e EXCLUSÃO são proibidas — o seed é feito apenas pelo script
+      // offline scripts/seed_users.mjs (admin SDK), que ignora estas regras.
+      // -----------------------------------------------------------------------------
+      match /system_users_v1/{userId} {
+        allow read: if request.auth != null;
+        allow update: if request.auth != null;
+        allow create, delete: if false;
+      }
+    }
+
+    // Negar explicitamente qualquer outro caminho
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

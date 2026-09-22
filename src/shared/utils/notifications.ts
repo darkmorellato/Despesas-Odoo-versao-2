@@ -1,3 +1,6 @@
+/** Tag única: notificações com a mesma tag substituem a anterior (sem empilhar) */
+const NOTIFICATION_TAG = 'miplace-despesas';
+
 /**
  * Solicita permissão para notificações nativas do sistema operacional / navegador
  */
@@ -11,8 +14,14 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
   }
 
   if (Notification.permission !== 'denied') {
-    const permission = await Notification.requestPermission();
-    return permission === 'granted';
+    // try/catch: navegadores podem lançar (ex.: chamada fora de gesto do usuário)
+    try {
+      const permission = await Notification.requestPermission();
+      return permission === 'granted';
+    } catch (err) {
+      console.warn('Erro ao solicitar permissão de notificação:', err);
+      return false;
+    }
   }
 
   return false;
@@ -31,6 +40,7 @@ export const showNativeNotification = (title: string, options?: NotificationOpti
       new Notification(title, {
         icon: './favicon.svg',
         badge: './favicon.svg',
+        tag: NOTIFICATION_TAG,
         ...options
       });
     } else if (Notification.permission !== 'denied') {
@@ -39,9 +49,12 @@ export const showNativeNotification = (title: string, options?: NotificationOpti
           new Notification(title, {
             icon: './favicon.svg',
             badge: './favicon.svg',
+            tag: NOTIFICATION_TAG,
             ...options
           });
         }
+      }).catch(err => {
+        console.warn('Erro ao solicitar permissão de notificação:', err);
       });
     }
   } catch (err) {

@@ -2,7 +2,10 @@ let globalAudioCtx: AudioContext | null = null;
 let cachedCalendarAudio: HTMLAudioElement | null = null;
 let cachedTodoAudio: HTMLAudioElement | null = null;
 let lastAudioPlayTime = 0;
-let audioQueueTimeout: any = null;
+// Timers de fila SEPARADOS por tipo — assim um toque pendente do calendário
+// não é cancelado pelo de tarefas (e vice-versa).
+let calendarQueueTimeout: ReturnType<typeof setTimeout> | null = null;
+let todoQueueTimeout: ReturnType<typeof setTimeout> | null = null;
 
 /**
  * Initialize audio context for notifications
@@ -55,10 +58,14 @@ export const playSynthesizedBeep = (): void => {
  */
 export const playCalendarAlertSound = (): void => {
   const now = Date.now();
+  // Limiar anti-sobreposição real: 3000 ms — se tocou há menos de 3 s,
+  // agenda nova tentativa 3,5 s depois (timer próprio do calendário)
   if (now - lastAudioPlayTime < 3000) {
-    // Evita sobreposição: agenda para tocar após 3,5 segundos
-    clearTimeout(audioQueueTimeout);
-    audioQueueTimeout = setTimeout(() => playCalendarAlertSound(), 3500);
+    if (calendarQueueTimeout) clearTimeout(calendarQueueTimeout);
+    calendarQueueTimeout = setTimeout(() => {
+      calendarQueueTimeout = null;
+      playCalendarAlertSound();
+    }, 3500);
     return;
   }
 
@@ -84,10 +91,14 @@ export const playCalendarAlertSound = (): void => {
  */
 export const playTodoAlertSound = (): void => {
   const now = Date.now();
+  // Limiar anti-sobreposição real: 3000 ms — se tocou há menos de 3 s,
+  // agenda nova tentativa 3,5 s depois (timer próprio de tarefas)
   if (now - lastAudioPlayTime < 3000) {
-    // Evita sobreposição: agenda para tocar após 3,5 segundos
-    clearTimeout(audioQueueTimeout);
-    audioQueueTimeout = setTimeout(() => playTodoAlertSound(), 3500);
+    if (todoQueueTimeout) clearTimeout(todoQueueTimeout);
+    todoQueueTimeout = setTimeout(() => {
+      todoQueueTimeout = null;
+      playTodoAlertSound();
+    }, 3500);
     return;
   }
 

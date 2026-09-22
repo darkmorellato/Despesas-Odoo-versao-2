@@ -17,18 +17,21 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: false,
+      // Preload usa apenas contextBridge, ipcRenderer e process.platform —
+      // APIs disponíveis também em preload sandboxed (Electron >= 20).
+      sandbox: true,
       webSecurity: true,
     },
   });
 
   // Handle external link clicks (open in default OS browser)
+  // Só http/https são abertos no navegador do sistema; qualquer outro esquema
+  // (file:, javascript:, data:, ...) é NEGADO para não abrir janela interna.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('http:') || url.startsWith('https:')) {
       shell.openExternal(url);
-      return { action: 'deny' };
     }
-    return { action: 'allow' };
+    return { action: 'deny' };
   });
 
   // Determine if running in development mode
@@ -100,7 +103,13 @@ ipcMain.handle('download-pdf-direct', async (event, defaultName = 'relatorio-des
     });
 
     const downloadsDir = app.getPath('downloads');
-    let targetFileName = defaultName.endsWith('.pdf') ? defaultName : `${defaultName}.pdf`;
+    // Sanitiza o nome vindo do renderer: basename (sem pastas) + whitelist
+    // de caracteres seguros — evita path traversal no diretório de Downloads.
+    const requestedName = path.basename(String(defaultName || 'relatorio-despesas.pdf'));
+    const safeBase = requestedName
+      .replace(/[^A-Za-z0-9._-]/g, '')
+      .replace(/^\.+/, '') || 'relatorio-despesas';
+    let targetFileName = safeBase.endsWith('.pdf') ? safeBase : `${safeBase}.pdf`;
     let filePath = path.join(downloadsDir, targetFileName);
 
     if (fs.existsSync(filePath)) {

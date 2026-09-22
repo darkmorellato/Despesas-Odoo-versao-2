@@ -19,12 +19,18 @@ export const DateInput: React.FC<DateInputProps> = ({
 }) => {
   const [inputType, setInputType] = useState<'text' | 'date'>('text');
 
+  // Só formata quando o value é YYYY-MM-DD — senão exibe o valor cru
+  const displayValue =
+    inputType === 'text' && value && /^\d{4}-\d{2}-\d{2}/.test(value)
+      ? formatDateBR(value)
+      : value;
+
   return (
     <div className="relative w-full group">
       <input
         type={inputType}
         required={required}
-        value={inputType === 'text' && value ? formatDateBR(value) : value}
+        value={displayValue}
         onChange={onChange}
         onFocus={(e) => {
           setInputType('date');

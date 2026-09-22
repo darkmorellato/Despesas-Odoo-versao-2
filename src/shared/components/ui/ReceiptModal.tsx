@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { X, Download, FileText, Image as ImageIcon } from '@/shared/components/icons';
 import { formatCurrency, formatDateBR } from '@/shared/utils/formatters';
 import type { Expense } from '@/shared/types';
@@ -9,15 +9,32 @@ interface ReceiptModalProps {
 }
 
 export const ReceiptModal: React.FC<ReceiptModalProps> = ({ expense, onClose }) => {
+  // Fecha com ESC — listener sempre registrado e removido no cleanup
+  useEffect(() => {
+    if (!expense?.receiptUrl) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [expense, onClose]);
+
   if (!expense || !expense.receiptUrl) return null;
 
   const isPdf = expense.receiptUrl.startsWith('data:application/pdf');
 
   const handleDownload = () => {
+    if (!expense.receiptUrl) return;
+    // Link no DOM + click programático + remoção (compatível com Electron/Chrome)
     const link = document.createElement('a');
-    link.href = expense.receiptUrl!;
+    link.href = expense.receiptUrl;
     link.download = `comprovante-${expense.description.replace(/\s+/g, '_')}-${expense.date}.${isPdf ? 'pdf' : 'jpg'}`;
+    document.body.appendChild(link);
     link.click();
+    link.remove();
   };
 
   return (

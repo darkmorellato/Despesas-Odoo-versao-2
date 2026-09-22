@@ -17,8 +17,8 @@ import {
   addDoc, 
   serverTimestamp 
 } from 'firebase/firestore';
-import { getAnalytics } from 'firebase/analytics';
-import { CHECKLIST_DOC_ID } from './constants';
+import type { CollectionReference, DocumentReference, DocumentData } from 'firebase/firestore';
+import { getAnalytics, isSupported } from 'firebase/analytics';
 
 // Your web app's Firebase configuration
 // As credenciais ficam no .env (ignorado pelo Git) — não exponha no código-fonte
@@ -51,9 +51,20 @@ try {
 
 export const db = firestoreDb;
 
-// Initialize Analytics (only in browser)
+// Initialize Analytics (only in browser, e apenas se o navegador suportar)
 if (typeof window !== 'undefined') {
-  getAnalytics(app);
+  isSupported()
+    .then((supported) => {
+      if (!supported) return;
+      try {
+        getAnalytics(app);
+      } catch (err) {
+        console.warn('Firebase Analytics indisponível:', err);
+      }
+    })
+    .catch(() => {
+      // isSupported() rejeitado (ambiente restrito) — ignora silenciosamente
+    });
 }
 
 // Re-export Firebase functions
@@ -73,22 +84,21 @@ export {
   serverTimestamp 
 };
 
-export const getFirebaseRefs = () => {
-  let expensesRef: any;
-  let checksRef: any;
-  let fixedPaymentsRef: any;
-
+export const getFirebaseRefs = (): {
+  expensesRef: CollectionReference<DocumentData>;
+  checksRef: DocumentReference<DocumentData>;
+  fixedPaymentsRef: CollectionReference<DocumentData>;
+} => {
   // Use standard Firebase path structure
   const miplaceDoc = doc(db, 'miplace-despesas', 'data');
-  expensesRef = collection(miplaceDoc, 'team_expenses_v2');
+  const expensesRef = collection(miplaceDoc, 'team_expenses_v2');
 
   const dataDoc = doc(db, 'miplace-despesas', 'data-team_data');
   const globalChecklistColl = collection(dataDoc, 'global_checklist_v1');
-  checksRef = doc(globalChecklistColl, 'checks');
+  const checksRef = doc(globalChecklistColl, 'checks');
 
   // Fixed payments collection
-  const fixedPaymentsColl = collection(dataDoc, 'fixed_payments_v1');
-  fixedPaymentsRef = fixedPaymentsColl;
+  const fixedPaymentsRef = collection(dataDoc, 'fixed_payments_v1');
 
   return { expensesRef, checksRef, fixedPaymentsRef };
 };

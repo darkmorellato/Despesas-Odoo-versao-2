@@ -25,8 +25,9 @@ export const PendingPaymentsAlert: React.FC<PendingPaymentsAlertProps> = ({
           e.stopPropagation();
           onClose();
         }}
-        className="absolute -top-2 -right-2 bg-amber-400 text-slate-950 rounded-full p-1 shadow-md hover:bg-amber-500 transition-colors opacity-0 group-hover:opacity-100 cursor-pointer"
+        className="absolute -top-2 -right-2 bg-amber-400 text-slate-950 rounded-full p-1 shadow-md hover:bg-amber-500 transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 cursor-pointer"
         title="Fechar Alerta"
+        aria-label="Fechar alerta de contas pendentes"
       >
         <X className="w-3.5 h-3.5 stroke-[3]" />
       </button>

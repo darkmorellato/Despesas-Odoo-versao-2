@@ -20,7 +20,12 @@ function parseMessage(message: string): { title: string; detail?: string } {
 }
 
 export const ToastContainer: React.FC<ToastContainerProps> = ({ toasts, removeToast }) => (
-  <div className="fixed top-4 right-4 z-[99999] flex flex-col gap-2.5 pointer-events-none" style={{ maxWidth: '380px' }}>
+  <div
+    className="fixed top-4 right-4 z-[99999] flex flex-col gap-2.5 pointer-events-none"
+    style={{ maxWidth: '380px' }}
+    role="status"
+    aria-live="polite"
+  >
     {toasts.map(toast => {
       const { title, detail } = parseMessage(toast.message);
       const isError = toast.type === 'error';

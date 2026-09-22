@@ -1,4 +1,3 @@
-export { ExpenseList } from './components/ExpenseList';
 export { ExpenseTableRow } from './components/ExpenseTableRow';
 export { ExpenseForm } from './components/ExpenseForm';
 export {

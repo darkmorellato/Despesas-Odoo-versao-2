@@ -90,6 +90,10 @@ Acesse http://localhost:3000 no navegador.
 | `npm run test:coverage` | Cobertura de testes |
 | `npm run lint` | Lint do código |
 | `npm run type-check` | Verificação de tipos |
+| `node scripts/seed_users.mjs` | Cadastra/edita usuários (senha via prompt, só vai como hash para o Firestore) |
+| `node scripts/seed_users.mjs --hash-legacy` | Converte senhas em texto plano existentes no Firestore para hash (senha não muda) |
+| `node scripts/seed_users.mjs --master` | Define a senha mestra de admin (hash no Firestore) |
+| `node scripts/seed_users.mjs --change NOVA_SENHA email@...` | Troca a senha de um usuário |
 
 ## Estrutura do Projeto
 
@@ -156,10 +160,16 @@ Pagamentos fixos com lembretes automáticos:
 
 ## Segurança
 
-- **Exclusão**: Requer senha de administrador
+- **Senhas**: nenhuma senha fica no código do cliente. Os usuários e a senha mestra
+  são gravados **apenas no Firestore**, como hash SHA-256 com salt por usuário
+  (`passwordHash`/`passwordSalt`). Cadastro/troca via `scripts/seed_users.mjs`.
+  - Migrar senhas antigas em texto plano: `node scripts/seed_users.mjs --hash-legacy`
+    (as senhas continuam as mesmas, apenas passam a ser armazenadas como hash).
+- **Exclusão**: Requer senha de administrador (validada contra o Firestore)
 - **Limite**: Exclusão permitida apenas em 24h após criação
 - **Funcionário**: Nome obrigatório antes de adicionar despesas
 - **Sincronização**: Automática quando online
+- **Firestore**: regras versionadas em `firestore.rules` (exigem autenticação)
 
 ## Testes
 

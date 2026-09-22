@@ -1,7 +1,22 @@
 import jsPDF from 'jspdf';
 import { formatDateBR, formatCurrency, getTodayLocal } from '@/shared/utils/formatters';
 import { getStoreOrder } from '@/shared/utils/helpers';
+import { DEFAULT_SETTINGS } from '@/shared/types';
 import type { Expense, Settings } from '@/shared/types';
+
+/** Remove quebras de linha/controle que quebrariam o layout da tabela do PDF */
+const sanitizeSingleLine = (text: string): string =>
+  (text || '').replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+
+/** Trunca texto acrescentando reticências '…' quando corta */
+const truncate = (text: string, max: number): string => {
+  const clean = sanitizeSingleLine(text);
+  return clean.length > max ? `${clean.slice(0, max - 1)}…` : clean;
+};
+
+/** Formata moeda protegendo valores NaN/Infinity/undefined */
+const formatCurrencySafe = (value: number): string =>
+  Number.isFinite(value) ? formatCurrency(value) : '—';
 
 /**
  * Generates a 100% vector PDF with selectable, copyable text, grouped by store.
@@ -39,7 +54,7 @@ export const buildVectorPDFDocument = (
     return a.localeCompare(b);
   });
 
-  const totalGeneral = expenses.reduce((sum, ex) => sum + ex.amount, 0);
+  const totalGeneral = expenses.reduce((sum, ex) => sum + (Number.isFinite(ex.amount) ? ex.amount : 0), 0);
   const emissionDate = formatDateBR(getTodayLocal());
 
   const checkPageBreak = (neededHeight: number) => {
@@ -75,7 +90,7 @@ export const buildVectorPDFDocument = (
 
   doc.setFontSize(14);
   doc.setTextColor(15, 23, 42);
-  doc.text(`${settings.currency} ${formatCurrency(totalGeneral)}`, rightX, y + 11, { align: 'right' });
+  doc.text(`${settings.currency} ${formatCurrencySafe(totalGeneral)}`, rightX, y + 11, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
@@ -98,7 +113,7 @@ export const buildVectorPDFDocument = (
       return a.description.localeCompare(b.description);
     });
 
-    const storeTotal = items.reduce((sum, item) => sum + item.amount, 0);
+    const storeTotal = items.reduce((sum, item) => sum + (Number.isFinite(item.amount) ? item.amount : 0), 0);
 
     checkPageBreak(25);
 
@@ -109,11 +124,11 @@ export const buildVectorPDFDocument = (
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
     doc.setTextColor(15, 23, 42);
-    doc.text(stName, margin + 3, y + 5);
+    doc.text(truncate(stName, 60), margin + 3, y + 5);
 
     doc.setFontSize(8);
     doc.setTextColor(15, 23, 42);
-    doc.text(`Subtotal Loja: ${settings.currency} ${formatCurrency(storeTotal)}`, rightX - 3, y + 5, { align: 'right' });
+    doc.text(`Subtotal Loja: ${settings.currency} ${formatCurrencySafe(storeTotal)}`, rightX - 3, y + 5, { align: 'right' });
 
     y += 9;
 
@@ -147,11 +162,11 @@ export const buildVectorPDFDocument = (
       doc.setFontSize(8);
       doc.setTextColor(51, 65, 85);
 
-      const quem = (ex.employeeName || settings.employeeName || '').slice(0, 16);
-      const cat = (ex.category || '').slice(0, 16);
+      const quem = truncate(ex.employeeName || settings.employeeName || '', 16);
+      const cat = truncate(ex.category || '', 16);
       const dateStr = formatDateBR(ex.date);
-      const desc = (ex.description || '').slice(0, 42);
-      const valStr = formatCurrency(ex.amount);
+      const desc = truncate(ex.description || '', 42);
+      const valStr = formatCurrencySafe(ex.amount);
 
       doc.text(quem, colQuem, y + 4);
       doc.text(cat, colCat, y + 4);
@@ -168,7 +183,7 @@ export const buildVectorPDFDocument = (
         doc.setFont('helvetica', 'italic');
         doc.setFontSize(7);
         doc.setTextColor(148, 163, 184);
-        doc.text(`Obs: ${ex.notes.slice(0, 50)}`, colDesc, y + 3);
+        doc.text(`Obs: ${truncate(ex.notes, 50)}`, colDesc, y + 3);
       }
 
       y += 6;
@@ -193,8 +208,6 @@ export const buildVectorPDFDocument = (
 
   return doc;
 };
-
-import { DEFAULT_SETTINGS } from '@/shared/types';
 
 /**
  * Downloads vector PDF directly in browser
@@ -233,7 +246,14 @@ export const openVectorPDFInNewTab = (
   const doc = buildVectorPDFDocument(expenses, safeSettings, periodLabel);
   const blob = doc.output('blob');
   const blobUrl = URL.createObjectURL(blob);
-  window.open(blobUrl, '_blank');
+  // 'noopener' impede que a nova aba acesse window.opener (segurança)
+  const newWindow = window.open(blobUrl, '_blank', 'noopener');
+  if (newWindow) {
+    newWindow.opener = null;
+  } else {
+    // Popup bloqueado — libera o download direto como fallback
+    URL.revokeObjectURL(blobUrl);
+  }
 };
 
 export const exportToPDF = exportVectorPDF;

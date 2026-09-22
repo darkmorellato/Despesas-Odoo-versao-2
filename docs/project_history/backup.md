@@ -99,9 +99,6 @@ Despesas-Odoo-main/
 - 58 pagamentos pré-configurados
 - Dias: 5, 10, 15, 20, 25, 27
 
-### Senha Admin
-- #Banana@10 (hardcoded em constants.ts)
-
 ## Regras de Negócio
 
 1. Divisão automática de despesas entre lojas
@@ -169,7 +166,7 @@ Despesas-Odoo-main/
 ## Problemas Conhecidos
 
 1. App.tsx muito grande (1003 linhas)
-2. Senha admin hardcoded
+2. Senha admin hardcoded (mantida fora do versionamento — ver .env.example)
 3. Sem testes implementados
 4. Código duplicado de formatação
 5. Componentes grandes podem ser refatorados

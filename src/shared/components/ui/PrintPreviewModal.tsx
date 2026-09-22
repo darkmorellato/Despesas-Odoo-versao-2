@@ -36,8 +36,8 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   onSavePDF,
   onOpenNewTab,
 }) => {
-  if (!isOpen) return null;
-
+  // ATENÇÃO (Rules of Hooks): todos os hooks precisam rodar ANTES de qualquer
+  // retorno condicional, pois o componente permanece montado com o modal fechado.
   const emissionDate = formatDateBR(getTodayLocal());
   const periodLabel = searchTerm
     ? `Busca: "${searchTerm}"`
@@ -77,6 +77,9 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
       };
     });
   }, [expenses]);
+
+  // Retorno condicional somente após todos os hooks executarem
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[150] flex flex-col bg-slate-900/75 backdrop-blur-sm overflow-hidden animate-in fade-in print:static print:inset-auto print:bg-white print:p-0 print:m-0 print:overflow-visible">

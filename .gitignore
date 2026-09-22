@@ -18,7 +18,12 @@ coverage/
 .env.local
 .env.development.local
 .env.test.local
+.env.local
 .env.production.local
+
+# Backups/dados de negócio não devem ir para o repositório
+backup_*.json
+*.backup.json
 
 # Logs
 npm-debug.log*

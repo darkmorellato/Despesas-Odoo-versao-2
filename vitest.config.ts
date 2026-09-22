@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig, configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
@@ -9,12 +9,15 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/__tests__/setup.ts'],
     css: true,
+    // Não rodar cópias de worktrees paralelos (.kilo/**): elas resolveriam o
+    // alias '@' para o src RAIZ e testariam código desatualizado = falsos erros
+    exclude: [...configDefaults.exclude, '.kilo/**', '**/.kilo/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
       exclude: [
         'node_modules/',
-        'src/test/',
+        'src/__tests__/',
         '**/*.d.ts',
         '**/*.config.*',
         '**/types/*',
