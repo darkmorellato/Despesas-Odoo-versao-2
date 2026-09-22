@@ -189,47 +189,60 @@ export default function App() {
   }, [sessionUser, settings.employeeName]);
 
   // Check pending payments (Calendário - a cada 15 minutos com hey_listen.mp3)
-  // Refs evitam que a assinatura instável de getPendingPayments/fixedPayments
-  // reinicie o efeito a cada toggle no calendário (reabrindo o alerta que o
-  // usuário fechou e tocando o som de novo).
-  const getPendingPaymentsRef = useRef(getPendingPayments);
-  const fixedPaymentsRef = useRef(fixedPayments);
-  useEffect(() => { getPendingPaymentsRef.current = getPendingPayments; }, [getPendingPayments]);
-  useEffect(() => { fixedPaymentsRef.current = fixedPayments; }, [fixedPayments]);
-
-  // Assinatura da última lista de pendências exibida — só reabre se MUDOU
-  const lastPendingSignatureRef = useRef('');
+  //
+  // O efeito depende de `checks` e `fixedPayments` para RECALCULAR quando os
+  // dados chegam do Firestore ou quando o usuário paga uma conta — antes ele
+  // só rodava a cada 15min e o alerta podia exibir um snapshot obsoleto
+  // (ex.: "45 pendentes" calculado antes do sync, com tudo já em dia).
+  // A lista de chaves anteriores garante que:
+  //   - fechar o alerta não é desfeito por recálculos (sem mudança → nada);
+  //   - pagar contas (remoções) NÃO reabre nem bipa de novo;
+  //   - uma NOVA pendência (adição) reabre e bipa.
+  const prevPendingKeysRef = useRef<string[]>([]);
+  const pendingFirstRunRef = useRef(true);
+  const pendingKeyOf = (p: { day?: number; description?: string }) => `${p.day}§${p.description}`;
 
   useEffect(() => {
     if (!sessionUser) return;
-    const checkPending = () => {
-      const pending = getPendingPaymentsRef.current(fixedPaymentsRef.current);
-      const signature = pending.map(p => `${p.day}-${p.description}`).join('|');
 
-      if (pending.length > 0) {
-        const changed = signature !== lastPendingSignatureRef.current;
-        lastPendingSignatureRef.current = signature;
-        setPendingItems(pending);
-        // Só (re)abre e toca som quando o conjunto de pendências mudou;
-        // fechar o alerta manualmente não é desfeito por reexecuções do efeito.
-        if (changed) {
-          setShowReminder(true);
-          playCalendarAlertSound();
-        }
-      } else {
-        lastPendingSignatureRef.current = '';
-        setShowReminder(false);
+    const checkPending = () => {
+      const pending = getPendingPayments(fixedPayments);
+      const keys = pending.map(pendingKeyOf);
+
+      if (pending.length === 0) {
+        // Tudo em dia → esconde e reseta o histórico (nova pendência futura reabre)
+        prevPendingKeysRef.current = [];
         setPendingItems([]);
+        setShowReminder(false);
+        return;
+      }
+
+      const prevKeys = prevPendingKeysRef.current;
+      const changed = keys.join('||') !== prevKeys.join('||');
+      if (!changed) return; // mesmo conteúdo → não re-render, não reabre, não bipa
+
+      const prevSet = new Set(prevKeys);
+      const hasNew = keys.some(k => !prevSet.has(k)); // adição real (nova pendência)
+      prevPendingKeysRef.current = keys;
+      setPendingItems(pending); // sempre atualizado (remove as pagas)
+
+      if (hasNew) {
+        setShowReminder(true);
+        playCalendarAlertSound();
       }
     };
 
-    const timer = setTimeout(checkPending, 2000);
-    const interval = setInterval(checkPending, 15 * 60 * 1000); // a cada 15 minutos
+    // 1ª execução com delay curto (evita som logo no boot); recálculos
+    // disparados por mudança de dados rodam imediatamente.
+    const delay = pendingFirstRunRef.current ? 2000 : 0;
+    pendingFirstRunRef.current = false;
+    const timer = setTimeout(checkPending, delay);
+    const interval = setInterval(checkPending, 15 * 60 * 1000); // reda periódica
     return () => {
       clearTimeout(timer);
       clearInterval(interval);
     };
-  }, [sessionUser]);
+  }, [sessionUser, checks, fixedPayments, getPendingPayments]);
 
   // Check pending To-Do tasks (Tarefas - a cada 30 minutos com todo.mp3, intercalado aos 5 minutos)
   const todosRef = useRef(todos);
