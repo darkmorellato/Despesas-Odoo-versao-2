@@ -24,6 +24,7 @@
  */
 
 import { initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 import {
   getFirestore, doc, getDoc, setDoc, deleteField, collection, getDocs
 } from 'firebase/firestore';
@@ -70,6 +71,11 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+
+// As firestore.rules exigem request.auth != null para ler system_users_v1 —
+// o script entra com login anônimo (mesmo mecanismo do app).
+await signInAnonymously(getAuth(app));
+console.log('Autenticado (anônimo) para acessar o Firestore.');
 
 // Mesmo formato usado pelo cliente (src/features/auth/services/authService.ts):
 // passwordHash = hex(sha256(`${salt}:${password}`))
@@ -236,4 +242,6 @@ try {
   else await seedUsers();
 } finally {
   rl.close();
+  // O Firestore mantém o event loop aberto (timers/WebChannel) — encerra aqui
+  process.exit(0);
 }
