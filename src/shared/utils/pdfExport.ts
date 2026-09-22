@@ -156,7 +156,9 @@ export const buildVectorPDFDocument = (
 
     // Table Rows
     items.forEach((ex) => {
-      checkPageBreak(10);
+      // Altura extra da linha: uma linha pela obs e uma pelo "Orig:" (rateio)
+      const extraLines = (ex.notes ? 1 : 0) + (ex.originalTotal && Number.isFinite(ex.originalTotal) ? 1 : 0);
+      checkPageBreak(10 + extraLines * 4);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
@@ -176,6 +178,16 @@ export const buildVectorPDFDocument = (
       doc.text(desc, colDesc, y + 4);
 
       doc.text(valStr, colVal, y + 4, { align: 'right' });
+
+      // Valor total original quando a despesa foi rateada em 2+ lojas —
+      // mesmo "Orig: 14.730,56" exibido na lista e na pré-visualização
+      if (ex.originalTotal && Number.isFinite(ex.originalTotal)) {
+        y += 4;
+        doc.setFont('helvetica', 'italic');
+        doc.setFontSize(7);
+        doc.setTextColor(148, 163, 184);
+        doc.text(`Orig: ${formatCurrencySafe(ex.originalTotal)}`, colVal, y + 3, { align: 'right' });
+      }
 
       // Notes if present
       if (ex.notes) {
