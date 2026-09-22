@@ -31,11 +31,34 @@ const db = getFirestore(app);
 await signInAnonymously(getAuth(app));
 
 const dataDoc = doc(db, 'miplace-despesas', 'data-team_data');
+
+// 1) Usuários: campos, ausência de texto plano e datas de atualização
 const snap = await getDocs(collection(dataDoc, 'system_users_v1'));
 for (const d of snap.docs) {
-  const fields = Object.keys(d.data()).sort();
-  const hasPlain = 'password' in d.data();
-  const hasHash = 'passwordHash' in d.data() && 'passwordSalt' in d.data();
-  console.log(`${d.data().email || d.id}: campos=[${fields.join(', ')}] | texto_plano=${hasPlain ? 'SIM ⚠️' : 'não'} | hash=${hasHash ? 'sim ✓' : 'AUSENTE ⚠️'}`);
+  const data = d.data();
+  const fields = Object.keys(data).sort();
+  const hasPlain = 'password' in data;
+  const hasHash = 'passwordHash' in data && 'passwordSalt' in data;
+  console.log(`${data.email || d.id}:`);
+  console.log(`  campos=[${fields.join(', ')}]`);
+  console.log(`  texto_plano=${hasPlain ? 'SIM ⚠️' : 'não'} | hash=${hasHash ? 'sim ✓' : 'AUSENTE ⚠️'} | updatedAt=${data.updatedAt ?? '(sem)'}`);
+}
+
+// 2) Senha mestra: doc system_settings_v1/admin_master
+try {
+  const { getDoc } = await import('firebase/firestore');
+  const master = await getDoc(doc(collection(dataDoc, 'system_settings_v1'), 'admin_master'));
+  if (!master.exists()) {
+    console.log('senha_mestra: AUSENTE ⚠️  (doc admin_master não existe)');
+  } else {
+    const data = master.data();
+    const fields = Object.keys(data).sort();
+    const hasPlain = 'password' in data;
+    const hasHash = 'passwordHash' in data && 'passwordSalt' in data;
+    console.log(`senha_mestra: campos=[${fields.join(', ')}]`);
+    console.log(`  texto_plano=${hasPlain ? 'SIM ⚠️' : 'não'} | hash=${hasHash ? 'sim ✓' : 'AUSENTE ⚠️'} | updatedAt=${data.updatedAt ?? '(sem)'}`);
+  }
+} catch (e) {
+  console.log('senha_mestra: erro ao consultar →', e.message);
 }
 process.exit(0);
