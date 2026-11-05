@@ -3,6 +3,7 @@ import { auth, signOut, onAuthStateChanged } from '@/config/firebase';
 import type { User } from 'firebase/auth';
 import type { SyncStatus } from '@/shared/types';
 
+import { logger } from '@/shared/utils/logger';
 /**
  * Return type for useAuth hook
  * @interface UseAuthReturn
@@ -62,7 +63,7 @@ export const useAuth = (): UseAuthReturn => {
         setAuthReady(true);
       });
     } catch (err) {
-      console.error('Erro auth:', err);
+      logger.error('Erro auth:', err);
       setSyncStatus('error');
       setError('Erro ao conectar ao servidor.');
       setAuthReady(true);

@@ -7,6 +7,7 @@ import { detectExpenseGroup, validateAdminPassword } from './useExpenses';
 import { saveExpense, SaveExpenseError } from '../services/saveExpense';
 import type { SaveExpenseDeps } from '../services/saveExpense';
 
+import { logger } from '@/shared/utils/logger';
 type ToastFn = (message: string, type?: ToastType) => void;
 
 interface UseExpenseEditorParams {
@@ -144,7 +145,7 @@ export const useExpenseEditor = ({
       revealSavedExpense(date);
       resetForm();
     } catch (error) {
-      console.error('Erro ao salvar despesa:', error);
+      logger.error('Erro ao salvar despesa:', error);
       const opsCompleted = error instanceof SaveExpenseError ? error.opsCompleted : 0;
       if (opsCompleted > 0) {
         // Falha parcial (ex.: gravou mas a auditoria falhou) — usuário precisa conferir
@@ -270,7 +271,7 @@ export const useExpenseEditor = ({
         setDeleteReason('');
         showToast('Lançamento excluído e registrado na auditoria!', 'success');
       } catch (error) {
-        console.error('Erro ao excluir lançamento:', error);
+        logger.error('Erro ao excluir lançamento:', error);
         showToast('Erro ao excluir lançamento. Tente novamente.', 'error');
       } finally {
         isDeletingRef.current = false;

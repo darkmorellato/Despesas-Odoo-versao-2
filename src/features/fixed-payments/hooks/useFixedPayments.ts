@@ -13,6 +13,7 @@ import {
   type FirestoreError,
 } from 'firebase/firestore';
 
+import { logger } from '@/shared/utils/logger';
 // Helper para formatar mensagem de erro amigável
 const getErrorMessage = (e: unknown, acao: string): string => {
   const msg = e instanceof Error ? e.message : String(e);
@@ -109,7 +110,7 @@ export const useFixedPayments = (user: User | null): UseFixedPaymentsReturn => {
         setIsLoading(false);
       },
       (err: FirestoreError) => {
-        console.error("❌ Erro ao carregar pagamentos fixos:", err);
+        logger.error("❌ Erro ao carregar pagamentos fixos:", err);
         setSyncStatus('error');
         setIsLoading(false);
       }
@@ -137,7 +138,7 @@ export const useFixedPayments = (user: User | null): UseFixedPaymentsReturn => {
       });
       setSyncStatus('synced');
     } catch (e: unknown) {
-      console.error('❌ Erro ao adicionar pagamento:', e);
+      logger.error('❌ Erro ao adicionar pagamento:', e);
       // Rollback cirúrgico: remove SÓ o item que falhou (o rollback antigo
       // restaurava o closure inteiro e desfazia operações concorrentes boas)
       setPayments(prev => prev.filter(p => p.id !== docId));
@@ -163,7 +164,7 @@ export const useFixedPayments = (user: User | null): UseFixedPaymentsReturn => {
       }, { merge: true });
       setSyncStatus('synced');
     } catch (e: unknown) {
-      console.error('❌ Erro ao atualizar pagamento:', e);
+      logger.error('❌ Erro ao atualizar pagamento:', e);
       // Reverte apenas os campos alterados DESTE item
       if (before) {
         setPayments(prev =>
@@ -190,7 +191,7 @@ export const useFixedPayments = (user: User | null): UseFixedPaymentsReturn => {
       await deleteDoc(docRef);
       setSyncStatus('synced');
     } catch (e: unknown) {
-      console.error('❌ Erro ao excluir pagamento:', e);
+      logger.error('❌ Erro ao excluir pagamento:', e);
       // Restaura somente o item removido (ordem é reconciliada pelo snapshot)
       if (before) {
         setPayments(prev => [...prev, before]);

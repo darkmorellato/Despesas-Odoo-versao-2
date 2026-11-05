@@ -4,6 +4,7 @@ import { onSnapshot, updateDoc } from 'firebase/firestore';
 import type { User } from 'firebase/auth';
 import type { CalendarCheck, FixedNotification } from '@/shared/types';
 
+import { logger } from '@/shared/utils/logger';
 export interface CalendarCheckEntry {
   key: string;
   status: boolean;
@@ -115,7 +116,7 @@ const saveToLocalStorage = (checks: CalendarCheck) => {
   try {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(checks));
   } catch (err) {
-    console.error('Erro ao salvar no localStorage:', err);
+    logger.error('Erro ao salvar no localStorage:', err);
   }
 };
 
@@ -124,7 +125,7 @@ const loadFromLocalStorage = (): CalendarCheck => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (saved) return JSON.parse(saved);
   } catch (err) {
-    console.error('Erro ao carregar do localStorage:', err);
+    logger.error('Erro ao carregar do localStorage:', err);
   }
   return {};
 };
@@ -177,7 +178,7 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
         setSyncError(null);
       },
       (err: Error) => {
-        console.error('Erro ao escutar checklist:', err);
+        logger.error('Erro ao escutar checklist:', err);
         if (err.message.includes('quota') || err.message.includes('exceeded')) {
           setSyncError('Cota do Firestore excedida. As alterações estão sendo salvas localmente.');
         } else {
@@ -231,7 +232,7 @@ export const useCalendar = (user: User | null): UseCalendarReturn => {
       setSyncError(null);
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
-      console.error('❌ Calendário: Erro ao salvar no Firebase:', err);
+      logger.error('❌ Calendário: Erro ao salvar no Firebase:', err);
       // Rollback por chave: restaura somente o que foi alterado nesta operação
       const restored: CalendarCheck = { ...checksRef.current };
       entries.forEach(({ key }) => {
