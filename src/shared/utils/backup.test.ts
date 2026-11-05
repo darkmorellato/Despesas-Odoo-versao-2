@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { Expense } from '@/shared/types';
 import {
   BACKUP_VERSION, RESTORE_CHUNK_SIZE, buildBackupFile, buildCsv, datedFileName, escapeCsvCell,
-  partitionBackupItems, summarizeRestore, validateBackupItem,
+  parseBackupCreatedAt, partitionBackupItems, summarizeRestore, validateBackupItem,
 } from './backup';
 
 const exp = (o: Partial<Expense> = {}): Expense => ({
@@ -135,5 +135,33 @@ describe('buildCsv', () => {
     const csv = buildCsv([exp({ description: 'A' }), exp({ description: 'B' })], 'x');
     expect(csv.split('\n')).toHaveLength(3);
     expect(csv.indexOf('"A"')).toBeLessThan(csv.indexOf('"B"'));
+  });
+});
+
+describe('parseBackupCreatedAt', () => {
+  it('Timestamp serializado do backup ({ seconds, nanoseconds })', () => {
+    expect(parseBackupCreatedAt({ seconds: 1700000000, nanoseconds: 123000000 })).toEqual({ seconds: 1700000000, nanoseconds: 123000000 });
+    expect(parseBackupCreatedAt({ seconds: 1700000000 })).toEqual({ seconds: 1700000000, nanoseconds: 0 });
+  });
+
+  it('formato do Admin SDK (_seconds/_nanoseconds)', () => {
+    expect(parseBackupCreatedAt({ _seconds: 1700000000, _nanoseconds: 5 })).toEqual({ seconds: 1700000000, nanoseconds: 5 });
+  });
+
+  it('texto de data (ISO) e número em milissegundos', () => {
+    expect(parseBackupCreatedAt('2026-03-01T10:00:00.250Z')).toEqual({ seconds: Date.parse('2026-03-01T10:00:00Z') / 1000, nanoseconds: 250000000 });
+    expect(parseBackupCreatedAt(1700000000500)).toEqual({ seconds: 1700000000, nanoseconds: 500000000 });
+  });
+
+  it('preserva o instante exato (não "arredonda" para a restauração)', () => {
+    const original = { seconds: 1767225600, nanoseconds: 1 };
+    expect(parseBackupCreatedAt(JSON.parse(JSON.stringify(original)))).toEqual(original);
+  });
+
+  it.each([
+    [undefined], [null], [''], ['lixo'], [{}], [{ seconds: 'x' }], [{ seconds: -1 }], [{ seconds: 1e12 }], [{ seconds: NaN }],
+    [{ seconds: 10, nanoseconds: -1 }], [{ seconds: 10, nanoseconds: 1e9 }], [NaN], [-5], [[]], [true],
+  ])('sem data válida (%j) → null (o chamador usa a hora do servidor)', (value) => {
+    expect(parseBackupCreatedAt(value)).toBeNull();
   });
 });

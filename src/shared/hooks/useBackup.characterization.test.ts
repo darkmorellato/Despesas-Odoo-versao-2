@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import type { Expense } from '@/shared/types';
 import { useBackup } from './useBackup';
-import { addDoc, setDoc, doc } from 'firebase/firestore';
+import { addDoc, setDoc, doc, Timestamp } from 'firebase/firestore';
 
 const refs = vi.hoisted(() => ({ expensesRef: { __ref: 'expenses' }, checksRef: { __ref: 'checks' } }));
 vi.mock('@/config/firebase', () => ({ getFirebaseRefs: vi.fn(() => refs) }));
@@ -17,6 +17,9 @@ vi.mock('firebase/firestore', () => ({
   setDoc: vi.fn().mockResolvedValue(undefined),
   doc: vi.fn((_ref: unknown, id: string) => ({ __doc: id })),
   serverTimestamp: vi.fn(() => 'SERVER_TS'),
+  Timestamp: class {
+    constructor(public seconds: number, public nanoseconds: number) {}
+  },
 }));
 
 const NOW = new Date(2026, 10, 5, 12, 0, 0); // 05/11/2026
@@ -246,15 +249,40 @@ describe('useBackup — restaurar: gravação', () => {
     expect(addDoc).not.toHaveBeenCalled();
   });
 
-  it('COMPORTAMENTO ATUAL: createdAt é sobrescrito pela hora do servidor (reinicia a janela de 24h de exclusão)', async () => {
-    await restore(backupFile([exp({ id: 'abc', createdAt: { seconds: 1700000000, nanoseconds: 0 } as never })]));
-    const payload = vi.mocked(setDoc).mock.calls[0][1] as Record<string, unknown>;
-    expect(payload.createdAt).toBe('SERVER_TS');
+  describe('createdAt original é preservado (a janela de 24h de exclusão NÃO reinicia)', () => {
+    const createdAtOf = async (createdAt: unknown) => {
+      vi.mocked(setDoc).mockClear();
+      await restore(backupFile([exp({ id: 'abc', createdAt: createdAt as never })]));
+      return (vi.mocked(setDoc).mock.calls[0][1] as Record<string, unknown>).createdAt;
+    };
+
+    it('Timestamp serializado ({seconds, nanoseconds}) volta como Timestamp com os mesmos valores', async () => {
+      const value = await createdAtOf({ seconds: 1700000000, nanoseconds: 500 });
+      expect(value).toBeInstanceOf(Timestamp);
+      expect(value).toMatchObject({ seconds: 1700000000, nanoseconds: 500 });
+    });
+
+    it('data em texto ISO também é preservada', async () => {
+      const value = await createdAtOf('2026-03-01T10:00:00.000Z');
+      expect(value).toBeInstanceOf(Timestamp);
+      expect((value as Timestamp).seconds).toBe(Date.parse('2026-03-01T10:00:00.000Z') / 1000);
+    });
+
+    it.each([[undefined], [null], ['lixo'], [{}], [{ seconds: 'x' }], [{ seconds: -5 }], [NaN]])(
+      'sem data válida (%j) usa a hora do servidor', async (value) => {
+        expect(await createdAtOf(value)).toBe('SERVER_TS');
+      }
+    );
   });
 
-  it('COMPORTAMENTO ATUAL: setDoc SEM merge substitui o documento inteiro', async () => {
+  it('setDoc usa merge: campos acrescentados depois do backup NÃO são apagados', async () => {
     await restore(backupFile([exp({ id: 'abc' })]));
-    expect(vi.mocked(setDoc).mock.calls[0]).toHaveLength(2); // sem { merge: true }
+    expect(vi.mocked(setDoc).mock.calls[0][2]).toEqual({ merge: true });
+  });
+
+  it('limpa os dados de exclusão (igual a "desfazer exclusão" do app)', async () => {
+    await restore(backupFile([exp({ id: 'abc' })]));
+    expect(vi.mocked(setDoc).mock.calls[0][1]).toMatchObject({ deleted: false, deletedAt: null, deleteReason: null, deletedBy: null });
   });
 
   it('sem id: cria um novo documento (addDoc)', async () => {
@@ -262,6 +290,14 @@ describe('useBackup — restaurar: gravação', () => {
     await restore(backupFile([semId]));
     expect(addDoc).toHaveBeenCalledWith(refs.expensesRef, expect.objectContaining({ description: 'Aluguel', deleted: false, createdAt: 'SERVER_TS' }));
     expect(setDoc).not.toHaveBeenCalled();
+  });
+
+  it('sem id mas com createdAt no backup: o novo documento também mantém a data original', async () => {
+    const { id: _id, ...semId } = exp({ createdAt: { seconds: 1700000000, nanoseconds: 0 } as never });
+    await restore(backupFile([semId]));
+    const payload = vi.mocked(addDoc).mock.calls[0][1] as Record<string, unknown>;
+    expect(payload.createdAt).toBeInstanceOf(Timestamp);
+    expect(payload).not.toHaveProperty('deletedAt'); // documento novo: sem campos de exclusão
   });
 
   it('envia em blocos de 50 e informa o progresso', async () => {

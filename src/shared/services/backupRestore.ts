@@ -1,7 +1,7 @@
-import { addDoc, serverTimestamp, setDoc, doc } from 'firebase/firestore';
+import { addDoc, serverTimestamp, setDoc, doc, Timestamp } from 'firebase/firestore';
 import type { CollectionReference, DocumentData, DocumentReference } from 'firebase/firestore';
 import type { Expense, CalendarCheck } from '@/shared/types';
-import { RESTORE_CHUNK_SIZE, type BackupData } from '../utils/backup';
+import { RESTORE_CHUNK_SIZE, parseBackupCreatedAt, type BackupData } from '../utils/backup';
 
 /** Lê o arquivo de backup e devolve o JSON; erro claro se o arquivo não for JSON */
 export const readBackupFile = (file: File): Promise<BackupData> =>
@@ -26,8 +26,10 @@ export const readBackupFile = (file: File): Promise<BackupData> =>
  * Com id: grava no MESMO id (idempotente — restaurar o mesmo arquivo 2x não
  * duplica). Sem id: cria documento novo.
  *
- * Atenção (comportamento histórico preservado): `createdAt` é regravado com a hora
- * do servidor e `setDoc` sem `merge` substitui o documento inteiro.
+ * Preserva os dados existentes: o `createdAt` ORIGINAL do backup é mantido (a janela de
+ * 24h de exclusão sem senha NÃO reinicia; sem data válida usa a hora do servidor) e
+ * `setDoc` usa `merge` (campos acrescentados depois do backup não são apagados). Os
+ * dados de exclusão são zerados, como em "desfazer exclusão" do app.
  */
 export const uploadExpenses = async (
   items: Expense[],
@@ -41,20 +43,23 @@ export const uploadExpenses = async (
     const results = await Promise.allSettled(
       chunk.map(item => {
         const { id, ...cleanItem } = item;
-        if (id) {
-          // IDEMPOTENTE: mesmo id do backup → re-restaurar sobrescreve
-          // em vez de duplicar (bug antigo: addDoc gerava novo id sempre)
-          return setDoc(doc(expensesRef, id), {
-            ...cleanItem,
-            deleted: false,
-            createdAt: serverTimestamp()
-          });
-        }
-        return addDoc(expensesRef, {
+        const created = parseBackupCreatedAt(cleanItem.createdAt);
+        const base = {
           ...cleanItem,
           deleted: false,
-          createdAt: serverTimestamp()
-        });
+          createdAt: created ? new Timestamp(created.seconds, created.nanoseconds) : serverTimestamp()
+        };
+        if (id) {
+          // IDEMPOTENTE: mesmo id do backup → re-restaurar atualiza o mesmo
+          // documento em vez de duplicar (bug antigo: addDoc gerava novo id sempre)
+          return setDoc(doc(expensesRef, id), {
+            ...base,
+            deletedAt: null,
+            deleteReason: null,
+            deletedBy: null
+          }, { merge: true });
+        }
+        return addDoc(expensesRef, base);
       })
     );
     for (const r of results) {
