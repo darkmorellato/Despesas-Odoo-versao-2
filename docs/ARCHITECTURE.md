@@ -516,13 +516,15 @@ seria só o inicial (o teste passaria sem provar o rollback) — conferido por q
 | `utils/download.ts` | Baixar um conteúdo como arquivo pelo navegador. |
 | `services/backupRestore.ts` | Ler o arquivo e enviar ao Firestore em blocos de 50 com relatório de falha parcial; restaurar os checks (com merge). |
 
-**Comportamentos atuais da restauração que merecem decisão** (documentados em testes
-"COMPORTAMENTO ATUAL", sem alterar):
-- `createdAt` é regravado com a hora do servidor — reinicia a janela de 24h em que um
-  lançamento pode ser excluído sem senha de admin (`canDelete`).
-- `setDoc` sem `merge` substitui o documento inteiro, descartando campos acrescentados
-  depois do backup.
+**Restauração que preserva os dados** (corrigido): o `createdAt` original do backup é mantido
+(`parseBackupCreatedAt` converte o Timestamp serializado de volta; sem data válida usa a hora do
+servidor), e `setDoc` usa `merge`. Antes, a restauração regravava `createdAt` com a hora atual —
+o que reiniciava a janela de 24h em que um lançamento pode ser excluído sem senha de admin
+(`canDelete`) — e substituía o documento inteiro, perdendo campos acrescentados depois do backup.
+Os dados de exclusão (`deletedAt`, `deleteReason`, `deletedBy`) são zerados, como em "desfazer
+exclusão" do app. Restaurar continua trazendo de volta lançamentos excluídos depois do backup
+(`deleted: false`), por ser uma restauração ao estado do arquivo.
 
-Guiada por 29 testes de caracterização + 54 unitários. As proteções críticas
+Guiada por 39 testes de caracterização + 72 unitários. As proteções críticas
 (idempotência por id, normalização de valor, anti-injeção de fórmula, trava de duplo
 envio, confirmação) foram conferidas por quebra proposital.

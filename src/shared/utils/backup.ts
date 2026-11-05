@@ -78,6 +78,44 @@ export const validateBackupItem = (
   };
 };
 
+/** Instante no formato do Firestore Timestamp */
+export interface TimestampParts {
+  seconds: number;
+  nanoseconds: number;
+}
+
+/**
+ * Data de criação original guardada no backup, para a restauração NÃO a trocar
+ * pela data da restauração (o prazo de 24h de exclusão sem senha usa `createdAt`).
+ *
+ * Aceita o Timestamp serializado pelo backup (`{ seconds, nanoseconds }`, também
+ * `_seconds`/`_nanoseconds`), texto de data (ISO) e número em milissegundos.
+ * Devolve `null` quando não há uma data válida — o chamador usa a hora do servidor.
+ */
+export const parseBackupCreatedAt = (value: unknown): TimestampParts | null => {
+  const MAX_SECONDS = 1e11; // ~ ano 5138: acima disso o valor não é um instante plausível
+  const valid = (seconds: number, nanoseconds: number): TimestampParts | null =>
+    Number.isFinite(seconds) && seconds >= 0 && seconds < MAX_SECONDS && Number.isFinite(nanoseconds) && nanoseconds >= 0 && nanoseconds < 1e9
+      ? { seconds: Math.floor(seconds), nanoseconds: Math.floor(nanoseconds) }
+      : null;
+
+  if (value && typeof value === 'object') {
+    const v = value as Record<string, unknown>;
+    const seconds = typeof v.seconds === 'number' ? v.seconds : v._seconds;
+    const nanos = typeof v.seconds === 'number' ? v.nanoseconds : v._nanoseconds;
+    if (typeof seconds === 'number') return valid(seconds, typeof nanos === 'number' ? nanos : 0);
+    return null;
+  }
+  if (typeof value === 'string') {
+    const ms = Date.parse(value);
+    return Number.isNaN(ms) ? null : valid(Math.floor(ms / 1000), (ms % 1000) * 1e6);
+  }
+  if (typeof value === 'number') {
+    return valid(Math.floor(value / 1000), (value % 1000) * 1e6);
+  }
+  return null;
+};
+
 /** Separa os itens válidos dos descartados, contando os motivos dos descartes */
 export const partitionBackupItems = (items: unknown[]): { validItems: Expense[]; skipped: Record<string, number> } => {
   const validItems: Expense[] = [];
