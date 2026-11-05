@@ -443,3 +443,49 @@ A refatoração foi guiada por 45 testes de caracterização (`TodoManager.test.
 escritos *antes* de mexer no código, e conferida renderizando a versão original e a
 nova com os mesmos dados em 16 estados (padrão, cada lista, painel aberto, formulário,
 busca...): o HTML gerado foi idêntico.
+
+## Calendário (`src/features/calendar`)
+
+`ExpenseCalendar` (1.076 → 257 linhas) só orquestra o estado da tela.
+
+| Peça | Responsabilidade |
+|---|---|
+| `utils/calendarView.ts` | Regras puras: grade do mês, filtros, deduplicação, regra de `months`, chave de pagamento (normalizada com fallback legado), estilos. `month` é sempre o índice 0–11 do JS. |
+| `hooks/useCalendarPayments.ts` | Fluxos de pagar, corrigir (senha de admin) e "selecionar todos" (lote), com o estado dos 3 modais. |
+| `hooks/useCalendarTodos.ts` | Tarefas exibidas, tarefa aberta no modal e concluir/reabrir (caminho local grava e toca som; o delegado não, para não duplicar). |
+| `CalendarHeader`, `CalendarGrid`, `CalendarSectionHeader`, `PaymentsList`, `ScheduledTodosList`, `TodoQuickModal`, `PaymentModals` | Uma região da tela cada. |
+
+Guiada por 37 testes de caracterização (escritos antes) e conferida renderizando a
+versão original e a nova em 31 estados (abas, filtros, zoom, modais, pagos legados...):
+HTML idêntico.
+
+## Pagamentos fixos (`src/features/fixed-payments`)
+
+`FixedPaymentsManager` (731 → 148 linhas) só compõe a tela. O formulário de cadastro
+existia **duas vezes** (menu suspenso e modal de edição); agora as partes comuns
+(`DayModeToggle`, `CustomDateInput`, `MonthPicker`) vivem em `PaymentFormParts`.
+
+| Peça | Responsabilidade |
+|---|---|
+| `utils/fixedPaymentsView.ts` | Regras puras: meses (1–12), dias padrão, opções de dia (inclui 30/31), dia a partir da data, alternar mês, montar o dado gravado. |
+| `hooks/useFixedPaymentsEditor.ts` | Menu "Novo Pagamento", modal de edição, pedido de senha de admin (editar/excluir), salvar. |
+| `hooks/useLastSyncTime.ts` | Horário da última sincronização. |
+| `NewPaymentDropdown`, `PaymentEditModal`, `PaymentPasswordModal`, `PaymentDayGroup`, `SyncStatusBadge` | Uma região da tela cada. |
+
+Guiada por 30 testes de caracterização (o componente não tinha testes) e conferida
+renderizando a versão original e a nova em 25 estados: HTML idêntico, ignorando
+apenas o espaço em branco dentro de um atributo `class` (o `className` de várias linhas
+carregava a indentação do código).
+
+## Formulário de lançamento (`src/features/expenses`)
+
+`ExpenseForm` (582 → 131 linhas) só compõe a tela.
+
+| Peça | Responsabilidade |
+|---|---|
+| `utils/amountInput.ts` | Regras de valor em pt-BR: `parsePastedAmount` (milhar/decimal/centavos/negativos), máscara de digitação, colagem (inválido, zero e negativo seguem a colagem padrão). |
+| `hooks/useReceiptAttachment.ts` | Comprovante: escolher arquivo, arrastar e soltar, Ctrl+V dentro do formulário e (só imagem) em qualquer lugar fora de campos de texto, sem processar o mesmo arquivo duas vezes. |
+| `ExpenseFormHeader`, `ExpenseFormFields`, `ReceiptDropzone` | Uma região da tela cada. |
+
+Guiada por 61 testes de caracterização (o formulário não tinha testes) e conferida
+renderizando a versão original e a nova em 17 estados: HTML idêntico.
