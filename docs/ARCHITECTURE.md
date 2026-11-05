@@ -476,3 +476,16 @@ Guiada por 30 testes de caracterização (o componente não tinha testes) e conf
 renderizando a versão original e a nova em 25 estados: HTML idêntico, ignorando
 apenas o espaço em branco dentro de um atributo `class` (o `className` de várias linhas
 carregava a indentação do código).
+
+## Formulário de lançamento (`src/features/expenses`)
+
+`ExpenseForm` (582 → 131 linhas) só compõe a tela.
+
+| Peça | Responsabilidade |
+|---|---|
+| `utils/amountInput.ts` | Regras de valor em pt-BR: `parsePastedAmount` (milhar/decimal/centavos/negativos), máscara de digitação, colagem (inválido, zero e negativo seguem a colagem padrão). |
+| `hooks/useReceiptAttachment.ts` | Comprovante: escolher arquivo, arrastar e soltar, Ctrl+V dentro do formulário e (só imagem) em qualquer lugar fora de campos de texto, sem processar o mesmo arquivo duas vezes. |
+| `ExpenseFormHeader`, `ExpenseFormFields`, `ReceiptDropzone` | Uma região da tela cada. |
+
+Guiada por 61 testes de caracterização (o formulário não tinha testes) e conferida
+renderizando a versão original e a nova em 17 estados: HTML idêntico.
