@@ -24,6 +24,7 @@ vi.mock('@/config/firebase', () => ({
   onAuthStateChanged: vi.fn(() => vi.fn()),
   signInWithEmailAndPassword: vi.fn(() => Promise.resolve({ user: { uid: 'test-uid' } })),
   signOut: vi.fn(() => Promise.resolve()),
+  sendPasswordResetEmail: vi.fn(() => Promise.resolve()),
   collection: vi.fn(),
   doc: vi.fn(),
   query: vi.fn(),

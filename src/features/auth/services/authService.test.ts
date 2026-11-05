@@ -1,18 +1,20 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   authenticateUser,
+  requestPasswordReset,
   validateAnyAdminPassword,
   logoutUser,
   getStoredUserSession,
 } from './authService';
 import { getDocs, getDoc } from 'firebase/firestore';
-import { signInWithEmailAndPassword, signOut } from '@/config/firebase';
+import { signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from '@/config/firebase';
 
 vi.mock('@/config/firebase', () => ({
   auth: {},
   db: {},
   signInWithEmailAndPassword: vi.fn(),
   signOut: vi.fn().mockResolvedValue(undefined),
+  sendPasswordResetEmail: vi.fn(),
 }));
 
 vi.mock('firebase/firestore', () => ({
@@ -37,6 +39,38 @@ describe('authService', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
+  });
+
+  describe('requestPasswordReset', () => {
+    beforeEach(() => {
+      vi.mocked(sendPasswordResetEmail).mockResolvedValue(undefined);
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+    });
+
+    it('normaliza o e-mail e pede o envio ao Firebase Auth', async () => {
+      await requestPasswordReset('  MiplaceAbner@Miplace.com ');
+      expect(sendPasswordResetEmail).toHaveBeenCalledWith({}, 'miplaceabner@miplace.com');
+    });
+
+    it('e-mail vazio: erro, sem chamar o Firebase', async () => {
+      await expect(requestPasswordReset('   ')).rejects.toThrow('Informe o e-mail');
+      expect(sendPasswordResetEmail).not.toHaveBeenCalled();
+    });
+
+    it('conta inexistente: resolve normalmente (não revela se o e-mail existe)', async () => {
+      vi.mocked(sendPasswordResetEmail).mockRejectedValue({ code: 'auth/user-not-found' });
+      await expect(requestPasswordReset('ninguem@exemplo.com')).resolves.toBeUndefined();
+    });
+
+    it.each([
+      ['auth/invalid-email', 'E-mail inválido.'],
+      ['auth/too-many-requests', 'Muitas tentativas'],
+      ['auth/network-request-failed', 'Não foi possível conectar'],
+      ['auth/algo-inesperado', 'Não foi possível enviar o e-mail agora'],
+    ])('traduz o erro %s', async (code, fragment) => {
+      vi.mocked(sendPasswordResetEmail).mockRejectedValue({ code });
+      await expect(requestPasswordReset('a@b.com')).rejects.toThrow(fragment);
+    });
   });
 
   describe('authenticateUser', () => {

@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Mail, Lock, Eye, EyeOff, Shield, AlertTriangle } from '@/shared/components/icons';
-import { authenticateUser } from '../services/authService';
+import { authenticateUser, requestPasswordReset } from '../services/authService';
 import type { AuthenticatedUser } from '../types';
 
 interface LoginScreenProps {
@@ -13,13 +13,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
+  const [isSendingReset, setIsSendingReset] = useState(false);
+
   const passwordInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isLoading) return; // Enter duplo no mesmo tick não autentica 2x
     setErrorMessage(null);
+    setInfoMessage(null);
 
     if (!email.trim()) {
       setErrorMessage('Por favor, informe seu e-mail de acesso.');
@@ -45,10 +48,33 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
     }
   };
 
+  const handleForgotPassword = async () => {
+    if (isSendingReset) return;
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    if (!email.trim()) {
+      setErrorMessage('Informe seu e-mail no campo acima para receber o link de redefinição.');
+      return;
+    }
+
+    setIsSendingReset(true);
+    try {
+      await requestPasswordReset(email);
+      // Mesma mensagem exista ou não a conta (não revela quais e-mails são cadastrados)
+      setInfoMessage('Se o e-mail estiver cadastrado, enviamos um link para redefinir a senha. Confira também a caixa de spam.');
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Não foi possível enviar o e-mail agora.');
+    } finally {
+      setIsSendingReset(false);
+    }
+  };
+
   const handleSelectEmail = (userEmail: string) => {
     setEmail(userEmail);
     setPassword('');
     setErrorMessage(null);
+    setInfoMessage(null);
     setTimeout(() => {
       passwordInputRef.current?.focus();
     }, 50);
@@ -91,6 +117,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                 <p className="text-xs font-bold text-rose-800">Falha no Acesso</p>
                 <p className="text-xs text-rose-700 mt-0.5">{errorMessage}</p>
               </div>
+            </div>
+          )}
+
+          {infoMessage && (
+            <div role="status" className="mb-5 p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 font-medium animate-in fade-in">
+              {infoMessage}
             </div>
           )}
 
@@ -146,6 +178,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+            </div>
+
+            <div className="flex justify-end -mt-1">
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                disabled={isSendingReset || isLoading}
+                className="text-xs font-semibold text-slate-500 hover:text-amber-700 underline-offset-2 hover:underline cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {isSendingReset ? 'Enviando...' : 'Esqueci minha senha'}
+              </button>
             </div>
 
             {/* Submit Button */}

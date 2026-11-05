@@ -1,5 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'firebase/auth';
 import { 
   initializeFirestore, 
   getFirestore, 
@@ -34,7 +35,27 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+
+// App Check (reCAPTCHA v3): comprova ao Firebase que a requisição vem DESTE app e
+// não de um script usando a apiKey pública. OPCIONAL: só liga com
+// VITE_APPCHECK_SITE_KEY no .env. Precisa ser iniciado antes de Auth/Firestore.
+// Em desenvolvimento usa token de depuração (gerado no console do navegador e
+// cadastrado em Firebase > App Check > Apps > Gerenciar tokens de depuração).
+// Passo a passo e aplicação (enforcement): docs/SECURITY.md.
+const appCheckSiteKey = import.meta.env.VITE_APPCHECK_SITE_KEY;
+if (appCheckSiteKey) {
+  if (import.meta.env.DEV) {
+    (self as unknown as { FIREBASE_APPCHECK_DEBUG_TOKEN?: string | boolean }).FIREBASE_APPCHECK_DEBUG_TOKEN =
+      import.meta.env.VITE_APPCHECK_DEBUG_TOKEN || true;
+  }
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider(appCheckSiteKey),
+    isTokenAutoRefreshEnabled: true,
+  });
+}
 export const auth = getAuth(app);
+// E-mails do Firebase Auth (redefinição de senha etc.) em português
+auth.languageCode = 'pt-BR';
 
 // Initialize Firestore with IndexedDB persistent local cache
 let firestoreDb: ReturnType<typeof getFirestore>;
@@ -60,6 +81,7 @@ export const db = firestoreDb;
 export { 
   signInWithEmailAndPassword, 
   signOut, 
+  sendPasswordResetEmail,
   onAuthStateChanged, 
   collection, 
   doc, 

@@ -1,4 +1,4 @@
-import { auth, db, signInWithEmailAndPassword, signOut } from '@/config/firebase';
+import { auth, db, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from '@/config/firebase';
 import {
   collection,
   doc,
@@ -64,6 +64,31 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   'auth/too-many-requests': 'Muitas tentativas. Aguarde alguns minutos e tente novamente.',
   'auth/network-request-failed': 'Não foi possível conectar ao servidor de autenticação. Verifique sua conexão.',
   'auth/operation-not-allowed': 'Login por e-mail/senha não está habilitado no Firebase.',
+};
+
+/**
+ * Envia o e-mail de redefinição de senha DE LOGIN (Firebase Auth).
+ *
+ * Não revela se o e-mail tem conta: "usuário não encontrado" é tratado como
+ * sucesso (a tela mostra sempre a mesma mensagem). Não altera a senha de admin
+ * de confirmação (editar/excluir), que é gerenciada por scripts/seed_users.mjs.
+ */
+export const requestPasswordReset = async (email: string): Promise<void> => {
+  const normalizedEmail = email.toLowerCase().trim();
+  if (!normalizedEmail) {
+    throw new Error('Informe o e-mail da sua conta.');
+  }
+
+  try {
+    await sendPasswordResetEmail(auth, normalizedEmail);
+  } catch (error) {
+    const code = (error as { code?: string })?.code ?? '';
+    if (code === 'auth/user-not-found') return; // não revela se a conta existe
+    console.warn('Falha ao enviar redefinição de senha:', code || error);
+    throw new Error(
+      AUTH_ERROR_MESSAGES[code] ?? 'Não foi possível enviar o e-mail agora. Tente novamente em instantes.'
+    );
+  }
 };
 
 /**

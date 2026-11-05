@@ -39,6 +39,49 @@ anônimo). Faça tudo na mesma janela:
 Se algo der errado, o rollback é republicar as regras anteriores (`git show
 HEAD~:firestore.rules > firestore.rules`) e o hosting anterior.
 
+## Redefinição de senha
+
+A tela de login tem **"Esqueci minha senha"**: envia o e-mail de redefinição do
+Firebase Auth (em português) para o endereço digitado. A tela sempre mostra a
+mesma mensagem, exista ou não a conta (não revela quais e-mails são cadastrados).
+
+- Vale só para a **senha de login**. A senha de admin (editar/excluir) é outra e
+  continua sendo trocada por `scripts/seed_users.mjs`.
+- O e-mail só chega se a caixa de entrada existir. Os textos do e-mail podem ser
+  ajustados em Firebase → Authentication → Templates.
+
+## App Check (reCAPTCHA v3)
+
+Faz o Firebase aceitar chamadas só do SEU app, e não de scripts que usem a apiKey
+pública. O código já está pronto e **fica desligado** até existir a chave:
+
+1. Crie uma chave **reCAPTCHA v3** em https://www.google.com/recaptcha/admin com
+   os domínios `miplace-despesas.web.app`, `miplace-despesas.firebaseapp.com` e
+   `localhost`.
+2. Firebase → App Check → Apps → registre o app web com essa chave (a secreta).
+3. Coloque a chave de **site** em `.env`: `VITE_APPCHECK_SITE_KEY=...`.
+4. `npm run build` e `firebase deploy --only hosting`.
+5. Deixe **1–2 dias em modo de monitoramento** (App Check → APIs) e confira que as
+   requisições "não verificadas" caíram a ~0. Só então clique em **Aplicar** para
+   Firestore (e Authentication, se quiser).
+6. Desenvolvimento: abra o app local, copie o token de depuração que aparece no
+   console do navegador e cadastre em App Check → Gerenciar tokens de depuração.
+
+**App desktop (Electron) não é compatível:** ele carrega `dist/index.html` por
+`file://`, origem que o reCAPTCHA não valida. Decisão do projeto: **o uso é só
+pelo site**. Com o App Check aplicado, o app desktop perde o acesso ao Firestore.
+Se um dia o desktop voltar a ser necessário, sirva-o por `http://localhost`
+(domínio cadastrado no reCAPTCHA) ou deixe o App Check sem aplicar.
+
+## Monitoramento de erros (Sentry, opcional)
+
+Sem `VITE_SENTRY_DSN` nada é carregado nem enviado. Com ele, erros de renderização
+(error boundary global e por tela) e os registrados por `logger.error` vão para o
+Sentry. Por ser app financeiro, o envio é restrito: sem dados do usuário, sem
+breadcrumbs de console, cliques e requisições, sem replay e sem tracing, com
+cookies, headers e query da URL removidos (`src/shared/utils/monitoring.ts`).
+Evite colocar valores e descrições de despesas em mensagens de erro.
+
 ## Testes das regras
 
 `npm run test:rules` sobe o emulador do Firestore e executa
