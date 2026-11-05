@@ -41,6 +41,38 @@ jobs:
       - name: Build
         run: npm run build
 
+  rules:
+    name: Regras do Firestore (emulador)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Garante o modelo de acesso do firestore.rules (equipe, dono, anônimo
+    # negado, auditoria imutável). Uma regra quebrada falha o merge.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # O emulador do Firestore exige Java 21+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Cache do emulador
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Testar regras
+        run: npm run test:rules
+
   audit:
     name: Auditoria de dependências (produção)
     runs-on: ubuntu-latest

@@ -12,9 +12,10 @@
     "electron:build": "npm run build && cross-env ELECTRON_PROD=1 electron .",
     "electron:start": "cross-env ELECTRON_PROD=1 electron .",
     "test": "vitest",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-miplace-rules \"vitest run --config vitest.rules.config.ts\"",
     "test:ui": "vitest --ui",
     "test:coverage": "vitest --coverage",
-    "lint": "eslint src",
+    "lint": "eslint src --max-warnings 0",
     "type-check": "tsc --noEmit"
   },
   "keywords": [
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@firebase/rules-unit-testing": "^3.0.4",
     "@testing-library/jest-dom": "^6.4.0",
     "@testing-library/react": "^16.0.0",
     "@testing-library/user-event": "^14.5.0",

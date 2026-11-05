@@ -54,3 +54,6 @@ Thumbs.db
 # Firebase
 firebase-debug.log
 .firebase/
+
+# Logs do emulador do Firebase
+*-debug.log

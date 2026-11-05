@@ -11,7 +11,8 @@ export default defineConfig({
     css: true,
     // Não rodar cópias de worktrees paralelos (.kilo/**): elas resolveriam o
     // alias '@' para o src RAIZ e testariam código desatualizado = falsos erros
-    exclude: [...configDefaults.exclude, '.kilo/**', '**/.kilo/**'],
+    // Testes das regras do Firestore exigem o emulador: rodam em `npm run test:rules`
+    exclude: [...configDefaults.exclude, '.kilo/**', '**/.kilo/**', 'src/__tests__/rules/**'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

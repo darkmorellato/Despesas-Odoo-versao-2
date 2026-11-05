@@ -39,6 +39,20 @@ anônimo). Faça tudo na mesma janela:
 Se algo der errado, o rollback é republicar as regras anteriores (`git show
 HEAD~:firestore.rules > firestore.rules`) e o hosting anterior.
 
+## Testes das regras
+
+`npm run test:rules` sobe o emulador do Firestore e executa
+`src/__tests__/rules/firestore.rules.test.ts` (requer **Java 21+** instalado;
+no Arch: `sudo pacman -S jre21-openjdk`). Cobrem: acesso negado para quem não
+tem login, token anônimo, e-mail fora da lista, outro provedor e e-mail com caixa
+diferente; permissões da equipe e do dono; `lastLogin` como único campo que a
+equipe altera em usuários; senha mestra só pelo dono; auditoria sem exclusão; e
+caminhos não listados negados. O job `rules` do CI roda o mesmo comando em todo
+push e pull request.
+
+**Ao mudar as regras ou a lista de e-mails**, atualize também as constantes
+`TEAM_EMAIL`/`OWNER_EMAIL` no teste e rode `npm run test:rules` antes de publicar.
+
 ## Manutenção
 
 - **Novo usuário:** adicionar o e-mail em `isTeamMember()` (`firestore.rules`),
@@ -56,9 +70,6 @@ HEAD~:firestore.rules > firestore.rules`) e o hosting anterior.
 
 ## Limitações conhecidas
 
-- As regras **não foram executadas em emulador** neste repositório (requer
-  Java). Teste antes com `firebase emulators:start --only firestore` ou
-  simule no console (Firestore → Regras → Playground).
 - O hash da senha de admin é legível pelas contas da equipe (necessário para a
   conferência no cliente). Para eliminar isso, mover a conferência para uma
   Cloud Function (requer plano Blaze).
