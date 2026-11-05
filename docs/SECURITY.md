@@ -50,20 +50,27 @@ mesma mensagem, exista ou não a conta (não revela quais e-mails são cadastrad
 - O e-mail só chega se a caixa de entrada existir. Os textos do e-mail podem ser
   ajustados em Firebase → Authentication → Templates.
 
-## App Check (reCAPTCHA v3)
+## App Check (reCAPTCHA Enterprise)
 
 Faz o Firebase aceitar chamadas só do SEU app, e não de scripts que usem a apiKey
-pública. O código já está pronto e **fica desligado** até existir a chave:
+pública. O código só liga com a chave no `.env` (sem ela fica desligado).
 
-1. Crie uma chave **reCAPTCHA v3** em https://www.google.com/recaptcha/admin com
-   os domínios `miplace-despesas.web.app`, `miplace-despesas.firebaseapp.com` e
-   `localhost`.
-2. Firebase → App Check → Apps → registre o app web com essa chave (a secreta).
-3. Coloque a chave de **site** em `.env`: `VITE_APPCHECK_SITE_KEY=...`.
+Usa o provedor **reCAPTCHA Enterprise** (`ReCaptchaEnterpriseProvider`), sucessor
+do reCAPTCHA Classic/v3, que o Google depreciou (não permite mais criar chaves
+Classic e o console do Firebase avisa disso). O Enterprise **não tem chave secreta**:
+
+1. No Google Cloud → reCAPTCHA / Fraud Defense, a chave do tipo **score** para
+   site com os domínios `miplace-despesas.web.app` e
+   `miplace-despesas.firebaseapp.com` (não adicione `localhost` a uma chave de
+   produção). A chave atual (`6Lfzfx…`) já está nesse formato.
+2. Firebase → App Check → Apps → o app web → **reCAPTCHA Enterprise** → informe a
+   chave de site (o provedor "reCAPTCHA v3" fica vazio — não é usado).
+3. Chave de **site** em `.env`: `VITE_APPCHECK_SITE_KEY=...`.
 4. `npm run build` e `firebase deploy --only hosting`.
-5. Deixe **1–2 dias em modo de monitoramento** (App Check → APIs) e confira que as
-   requisições "não verificadas" caíram a ~0. Só então clique em **Aplicar** para
-   Firestore (e Authentication, se quiser).
+5. Verifique no navegador que a troca do token retorna 200 (e não
+   `App not registered`) e deixe **1–2 dias em modo de monitoramento** (App Check →
+   APIs): as requisições "não verificadas" devem cair a ~0. Só então **Aplicar**
+   para Firestore (e Authentication, se quiser).
 6. Desenvolvimento: abra o app local, copie o token de depuração que aparece no
    console do navegador e cadastre em App Check → Gerenciar tokens de depuração.
 
