@@ -489,3 +489,19 @@ carregava a indentação do código).
 
 Guiada por 61 testes de caracterização (o formulário não tinha testes) e conferida
 renderizando a versão original e a nova em 17 estados: HTML idêntico.
+
+### Hook `useTodo` (`src/features/todo/hooks`)
+
+`useTodo` (526 → 61 linhas) só compõe as partes:
+
+| Peça | Responsabilidade |
+|---|---|
+| `useTodoAuthReady` | Espera o login com conta da equipe (sessão anônima não conta) antes de assinar o Firestore. |
+| `useTodoSync` | Escuta as 300 tarefas mais recentes e entrega a lista já traduzida/ordenada/sem duplicados. |
+| `useTodoReminders` | Alerta sonoro + notificação nativa uma vez por tarefa por dia; permissão no primeiro gesto. |
+| `useTodoMutations` | As 8 operações. Todas aplicam na tela na hora, gravam e **desfazem** se a gravação falhar (um só ponto de confirmação: `commit`). |
+| `utils/todoRecurrence`, `todoDocument`, `todoReminders` | Regras puras: próxima data (dias úteis, fim de mês), próxima ocorrência já existe?, leitura de documentos legados, lembrete devido. |
+
+Guiada por 55 testes de caracterização. Os testes de "desfazer" capturam o erro dentro do
+`act`: se a ação lançasse para fora, o React descartaria as renderizações e o estado lido
+seria só o inicial (o teste passaria sem provar o rollback) — conferido por quebra proposital.
