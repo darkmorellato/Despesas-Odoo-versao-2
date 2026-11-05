@@ -404,3 +404,21 @@ carregamento, nunca números parciais), busca, painel vazio, backup (usa a lista
 devolvida por `loadFullHistory`) e lançamentos com data anterior à janela. O card
 de resumo e o aviso do painel deixam claro quando o total é só do período
 carregado. A janela vive em `features/expenses/utils/historyWindow.ts`.
+
+
+## Decisões de dependências
+
+- **Firebase 11.10 (não 12/13):** medido com o mesmo código de entrada, o SDK
+  passa de ~127 kB (v10) para ~133 kB (v11), mas salta para ~190–198 kB gzip na
+  v12/v13 (+65–70 kB no carregamento inicial) sem benefício para este app. A v11
+  já elimina as vulnerabilidades moderadas do `undici`; o aviso que resta
+  (`@grpc/grpc-js`) é de servidor gRPC em Node, não usado no navegador. A v13
+  também foi validada (tipos, 358 testes, regras, build) — migrar é trocar
+  `firebase` para `^13` e `@firebase/rules-unit-testing` para `^6`.
+- **Vite 8 / Rolldown:** `build.rolldownOptions.output.codeSplitting.groups`
+  substitui o `manualChunks` em objeto. Importe módulos lazy (`TodoManager`,
+  `AuditManager`) direto do arquivo, nunca do `index.ts` da feature: o barrel
+  reexporta o componente e anula o `import()` dinâmico (aviso
+  `INEFFECTIVE_DYNAMIC_IMPORT`).
+- **Node:** `engines` exige `^22.22.2 || >=24.15.0` (jsdom 31 / Vite 8).
+- Testes usam `@testing-library/jest-dom/vitest` (tipos do Vitest 5).

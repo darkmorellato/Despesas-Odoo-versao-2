@@ -93,6 +93,13 @@ equipe altera em usuários; senha mestra só pelo dono; auditoria sem exclusão;
 caminhos não listados negados. O job `rules` do CI roda o mesmo comando em todo
 push e pull request.
 
+`src/__tests__/rules/authIntegration.test.ts` complementa com Auth + Firestore
+**reais** (emuladores) e o SDK `firebase` do projeto: o token é emitido de verdade
+(provedor `password`, e-mail da equipe), provando que as regras funcionam com o
+que o SDK envia, além de login, redefinição de senha, `writeBatch` (rateio), a
+consulta da janela recente e `onSnapshot` com metadados. Os testes de regras e
+de integração rodam em sequência (compartilham o emulador).
+
 **Ao mudar as regras ou a lista de e-mails**, atualize também as constantes
 `TEAM_EMAIL`/`OWNER_EMAIL` no teste e rode `npm run test:rules` antes de publicar.
 
