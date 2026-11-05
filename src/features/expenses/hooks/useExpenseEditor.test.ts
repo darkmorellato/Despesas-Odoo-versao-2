@@ -3,13 +3,13 @@ import { renderHook, act } from '@testing-library/react';
 import React from 'react';
 import { useExpenseEditor } from './useExpenseEditor';
 import { validateAdminPassword } from './useExpenses';
-import { logAuditEvent } from '@/features/audit';
+import { logAuditEvent } from '@/features/audit/services/auditService';
 import type { Expense } from '@/shared/types';
 
 vi.mock('firebase/firestore', () => ({}));
 vi.mock('@/config/firebase', () => ({ getFirebaseRefs: vi.fn() }));
 vi.mock('@/features/auth', () => ({ validateAnyAdminPassword: vi.fn() }));
-vi.mock('@/features/audit', () => ({ logAuditEvent: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@/features/audit/services/auditService', () => ({ logAuditEvent: vi.fn().mockResolvedValue(undefined) }));
 // splitExpense/detectExpenseGroup reais; só a senha de admin é simulada
 vi.mock('./useExpenses', async (orig) => ({
   ...(await orig<typeof import('./useExpenses')>()),

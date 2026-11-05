@@ -1,7 +1,7 @@
 import { splitExpense, isGroupStore } from '../hooks/useExpenses';
 import type { ExpenseGroupPlan } from '../hooks/useExpenses';
 import type { Expense, StoreName } from '@/shared/types';
-import type { AuditLogItem } from '@/features/audit';
+import type { AuditLogItem } from '@/features/audit/types';
 
 type AuditLogInput = Omit<AuditLogItem, 'id' | 'createdAt'>;
 
