@@ -458,3 +458,21 @@ busca...): o HTML gerado foi idêntico.
 Guiada por 37 testes de caracterização (escritos antes) e conferida renderizando a
 versão original e a nova em 31 estados (abas, filtros, zoom, modais, pagos legados...):
 HTML idêntico.
+
+## Pagamentos fixos (`src/features/fixed-payments`)
+
+`FixedPaymentsManager` (731 → 148 linhas) só compõe a tela. O formulário de cadastro
+existia **duas vezes** (menu suspenso e modal de edição); agora as partes comuns
+(`DayModeToggle`, `CustomDateInput`, `MonthPicker`) vivem em `PaymentFormParts`.
+
+| Peça | Responsabilidade |
+|---|---|
+| `utils/fixedPaymentsView.ts` | Regras puras: meses (1–12), dias padrão, opções de dia (inclui 30/31), dia a partir da data, alternar mês, montar o dado gravado. |
+| `hooks/useFixedPaymentsEditor.ts` | Menu "Novo Pagamento", modal de edição, pedido de senha de admin (editar/excluir), salvar. |
+| `hooks/useLastSyncTime.ts` | Horário da última sincronização. |
+| `NewPaymentDropdown`, `PaymentEditModal`, `PaymentPasswordModal`, `PaymentDayGroup`, `SyncStatusBadge` | Uma região da tela cada. |
+
+Guiada por 30 testes de caracterização (o componente não tinha testes) e conferida
+renderizando a versão original e a nova em 25 estados: HTML idêntico, ignorando
+apenas o espaço em branco dentro de um atributo `class` (o `className` de várias linhas
+carregava a indentação do código).
