@@ -2,11 +2,10 @@ import React, { useState, useMemo } from 'react';
 import { History, Search, Trash2, Edit, User, Shield, Check } from '@/shared/components/icons';
 import { useAuditLogs } from '../hooks/useAuditLogs';
 import { formatCurrency, formatDateBR } from '@/shared/utils/formatters';
-import { STORE_IMAGES } from '@/config/constants';
 import type { AuditActionType } from '../types';
 
 export const AuditManager: React.FC = () => {
-  const { logs, isLoading } = useAuditLogs();
+  const { logs } = useAuditLogs();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | AuditActionType>('ALL');
 

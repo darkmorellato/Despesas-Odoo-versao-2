@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { X, Download, FileText, Image as ImageIcon } from '@/shared/components/icons';
+import { X, Download, FileText } from '@/shared/components/icons';
 import { formatCurrency, formatDateBR } from '@/shared/utils/formatters';
 import type { Expense } from '@/shared/types';
 

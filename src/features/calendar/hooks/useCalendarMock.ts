@@ -21,7 +21,7 @@ export const useCalendarMock = (): UseCalendarMockReturn => {
       return {};
     }
   });
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading] = useState(false);
   const lastLocalUpdate = useRef(0);
   const isInitialized = useRef(false);
 

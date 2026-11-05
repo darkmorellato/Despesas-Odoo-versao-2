@@ -36,7 +36,7 @@ export const ExpenseAnalytics: React.FC<ExpenseAnalyticsProps> = memo(({ expense
   // Valores defensivos: garantem que TODOS os hooks rodem antes de qualquer
   // retorno condicional (Rules of Hooks), mesmo sem dados disponíveis.
   const monthlyData = allStats?.monthlyData ?? [];
-  const years = allStats?.years ?? [];
+  const years = useMemo(() => allStats?.years ?? [], [allStats]);
 
   // Inicializa/ressincroniza o ano selecionado com os anos disponíveis
   useEffect(() => {
@@ -75,7 +75,6 @@ export const ExpenseAnalytics: React.FC<ExpenseAnalyticsProps> = memo(({ expense
   // no período selecionado — nesse caso renderizamos a UI de estado vazio abaixo.
   const activeData = viewMode === 'monthly' ? currentMonthData : currentYearData;
   const maxStoreAmount = activeData?.sortedStores[0]?.amount || 1;
-  const maxCategoryAmount = activeData?.sortedCategories[0]?.amount || 1;
 
   const handlePrevMonth = () => {
     if (selectedMonthIndex < allStats.monthlyData.length - 1) {

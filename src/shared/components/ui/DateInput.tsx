@@ -37,7 +37,7 @@ export const DateInput: React.FC<DateInputProps> = ({
           if (e.target.showPicker) {
             try {
               e.target.showPicker();
-            } catch (err) {
+            } catch {
               // Ignore showPicker errors
             }
           }

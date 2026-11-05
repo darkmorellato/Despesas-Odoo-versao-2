@@ -38,6 +38,7 @@ function loadFromLocalStorage(): FixedNotification[] {
       }
     }
   } catch {
+    // localStorage indisponível ou JSON corrompido: começa vazio
   }
   return [];
 }
@@ -46,6 +47,7 @@ function saveToLocalStorage(payments: FixedNotification[]): void {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payments));
   } catch {
+    // Cota cheia ou localStorage bloqueado: o cache local é opcional
   }
 }
 

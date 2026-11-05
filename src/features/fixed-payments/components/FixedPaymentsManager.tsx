@@ -251,7 +251,7 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
       day,
       payments: getPaymentsByDay(day),
     }));
-  }, [getUniqueDays, getPaymentsByDay, payments]);
+  }, [getUniqueDays, getPaymentsByDay]);
 
   // Dias disponíveis no select: inclui o dia atual do formulário caso não
   // esteja na lista fixa (ex.: dia 30/31) para não exibir uma opção errada
@@ -397,7 +397,7 @@ export const FixedPaymentsManager: React.FC<FixedPaymentsManagerProps> = memo(({
                         type="button"
                         onClick={() => {
                           setFormData(prev => {
-                            const { customDate, ...rest } = prev;
+                            const { customDate: _customDate, ...rest } = prev;
                             return { ...rest, day: d };
                           });
                         }}
