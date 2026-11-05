@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { initializeAppCheck, ReCaptchaV3Provider } from 'firebase/app-check';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail } from 'firebase/auth';
 import { 
   initializeFirestore, 
@@ -36,9 +36,10 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
-// App Check (reCAPTCHA v3): comprova ao Firebase que a requisição vem DESTE app e
+// App Check (reCAPTCHA Enterprise): comprova ao Firebase que a requisição vem DESTE app e
 // não de um script usando a apiKey pública. OPCIONAL: só liga com
-// VITE_APPCHECK_SITE_KEY no .env. Precisa ser iniciado antes de Auth/Firestore.
+// VITE_APPCHECK_SITE_KEY no .env (chave "score" do reCAPTCHA Enterprise no Google
+// Cloud, sem segredo: o provedor v3/Classic está depreciado). Precisa ser iniciado antes de Auth/Firestore.
 // Em desenvolvimento usa token de depuração (gerado no console do navegador e
 // cadastrado em Firebase > App Check > Apps > Gerenciar tokens de depuração).
 // Passo a passo e aplicação (enforcement): docs/SECURITY.md.
@@ -49,7 +50,7 @@ if (appCheckSiteKey) {
       import.meta.env.VITE_APPCHECK_DEBUG_TOKEN || true;
   }
   initializeAppCheck(app, {
-    provider: new ReCaptchaV3Provider(appCheckSiteKey),
+    provider: new ReCaptchaEnterpriseProvider(appCheckSiteKey),
     isTokenAutoRefreshEnabled: true,
   });
 }

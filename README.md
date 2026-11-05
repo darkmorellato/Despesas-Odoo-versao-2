@@ -175,6 +175,8 @@ Pagamentos fixos com lembretes automáticos:
 
 Passo a passo de publicação (contas, regras, ordem) e manutenção: [`docs/SECURITY.md`](docs/SECURITY.md).
 
+Deploy automático pelo GitHub Actions (OIDC, regras com aprovação, rollback): [`docs/DEPLOY.md`](docs/DEPLOY.md).
+
 ## Testes
 
 ```bash
