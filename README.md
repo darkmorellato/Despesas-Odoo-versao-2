@@ -88,7 +88,7 @@ Acesse http://localhost:3000 no navegador.
 | `npm run test` | Executar testes |
 | `npm run test:ui` | Testes com interface |
 | `npm run test:coverage` | Cobertura de testes |
-| `npm run test:rules` | Testa o `firestore.rules` no emulador (requer Java 21+) |
+| `npm run test:rules` | Testa o `firestore.rules` no emulador (requer Java 21+ e Firebase CLI global) |
 | `npm run lint` | Lint do código |
 | `npm run type-check` | Verificação de tipos |
 | `node scripts/seed_users.mjs` | Cadastra/edita usuários (senha via prompt, só vai como hash para o Firestore) |
