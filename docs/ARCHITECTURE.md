@@ -422,3 +422,24 @@ carregado. A janela vive em `features/expenses/utils/historyWindow.ts`.
   `INEFFECTIVE_DYNAMIC_IMPORT`).
 - **Node:** `engines` exige `^22.22.2 || >=24.15.0` (jsdom 31 / Vite 8).
 - Testes usam `@testing-library/jest-dom/vitest` (tipos do Vitest 5).
+
+## To-Do (`src/features/todo`)
+
+`TodoManager` (1.256 → 173 linhas) só orquestra o estado da tela. O restante:
+
+| Peça | Responsabilidade |
+|---|---|
+| `utils/todoFilters.ts` | Regras puras: filtros, contagens, seções de "Meu Dia", selo de vencimento, rótulos. Lista e contagem de cada filtro saem das mesmas funções. |
+| `hooks/useTodoComposer.ts` | Estado e envio do "Adicionar uma tarefa..." (não limpa o formulário se salvar falhar). |
+| `hooks/useSavedContacts.ts` | Contatos recentes (localStorage). |
+| `hooks/useTodoIntegrations.ts` | Google Agenda, Gmail e `.ics` com o aviso ao usuário. |
+| `components/TodoSidebar` + `todoFilterConfig.ts` | Listas e contagens, dirigidas por configuração (cores/ícones por lista). |
+| `TodoQuickAdd`, `TodoList`, `TodoTaskCard`, `TodoDetailDrawer`, `TodoBanner` | Uma região da tela cada. |
+
+Peculiaridade preservada (e coberta por teste): em "Meu Dia" a **lista** inclui as
+concluídas (numa seção própria), mas a **contagem** só conta as pendentes.
+
+A refatoração foi guiada por 45 testes de caracterização (`TodoManager.test.tsx`)
+escritos *antes* de mexer no código, e conferida renderizando a versão original e a
+nova com os mesmos dados em 16 estados (padrão, cada lista, painel aberto, formulário,
+busca...): o HTML gerado foi idêntico.
