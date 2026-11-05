@@ -14,7 +14,7 @@ import { useCalendar } from '@/features/calendar/hooks/useCalendar';
 import { useFixedPayments } from '@/features/fixed-payments/hooks/useFixedPayments';
 import { LoginScreen, getStoredUserSession, logoutUser } from '@/features/auth';
 import type { AuthenticatedUser } from '@/features/auth';
-import { useTodo } from '@/features/todo';
+import { useTodo } from '@/features/todo/hooks/useTodo';
 import { STORE_IMAGES } from '@/config/constants';
 import { getTodayLocal, formatDateBR, formatMonthBR, formatCurrency } from '@/shared/utils/formatters';
 import { ToastContainer, PendingPaymentsAlert, PrintPreviewModal, ReceiptModal, ErrorBoundary } from '@/shared/components/ui';

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { getTodayLocal, formatCurrency } from '@/shared/utils/formatters';
-import { logAuditEvent } from '@/features/audit';
+import { logAuditEvent } from '@/features/audit/services/auditService';
 import type { AuthenticatedUser } from '@/features/auth';
 import type { Expense, ToastType } from '@/shared/types';
 import { detectExpenseGroup, validateAdminPassword } from './useExpenses';
