@@ -505,3 +505,24 @@ renderizando a versão original e a nova em 17 estados: HTML idêntico.
 Guiada por 55 testes de caracterização. Os testes de "desfazer" capturam o erro dentro do
 `act`: se a ação lançasse para fora, o React descartaria as renderizações e o estado lido
 seria só o inicial (o teste passaria sem provar o rollback) — conferido por quebra proposital.
+
+### Backup e restauração (`src/shared`)
+
+`useBackup` (317 → 145 linhas) só orquestra (trava anti duplo-envio, confirmação, fluxo).
+
+| Peça | Responsabilidade |
+|---|---|
+| `utils/backup.ts` | Regras puras: formato do backup, validação item a item (com motivo), mensagem final, CSV do Odoo (BOM, escape, anti-injeção de fórmula, números crus). |
+| `utils/download.ts` | Baixar um conteúdo como arquivo pelo navegador. |
+| `services/backupRestore.ts` | Ler o arquivo e enviar ao Firestore em blocos de 50 com relatório de falha parcial; restaurar os checks (com merge). |
+
+**Comportamentos atuais da restauração que merecem decisão** (documentados em testes
+"COMPORTAMENTO ATUAL", sem alterar):
+- `createdAt` é regravado com a hora do servidor — reinicia a janela de 24h em que um
+  lançamento pode ser excluído sem senha de admin (`canDelete`).
+- `setDoc` sem `merge` substitui o documento inteiro, descartando campos acrescentados
+  depois do backup.
+
+Guiada por 29 testes de caracterização + 54 unitários. As proteções críticas
+(idempotência por id, normalização de valor, anti-injeção de fórmula, trava de duplo
+envio, confirmação) foram conferidas por quebra proposital.
