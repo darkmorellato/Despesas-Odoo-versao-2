@@ -32,6 +32,15 @@ import {
   getSavedContacts,
   saveContact
 } from '../utils/calendarIntegration';
+import {
+  countTodos,
+  filterTodos,
+  getDueBadge,
+  getFilterHeaderText,
+  getRepeatLabel,
+  getTaskTitle,
+  splitMyDay
+} from '../utils/todoFilters';
 
 interface TodoManagerProps {
   employeeName: string;
@@ -103,63 +112,13 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
   }, [todos, selectedTask]);
 
   // Filter tasks based on selected view
-  const filteredTodos = useMemo(() => {
-    let result = todos;
-
-    if (searchTerm) {
-      const q = searchTerm.toLowerCase();
-      result = result.filter(
-        (t) =>
-          t.title.toLowerCase().includes(q) ||
-          (t.notes && t.notes.toLowerCase().includes(q)) ||
-          (t.assignedTo && t.assignedTo.toLowerCase().includes(q)) ||
-          (t.assignedToName && t.assignedToName.toLowerCase().includes(q)) ||
-          t.steps?.some((s) => s.title.toLowerCase().includes(q))
-      );
-    }
-
-    switch (activeFilter) {
-      case 'today':
-        // Tarefas de hoje, sem data e atrasadas (tarefas agendadas para datas futuras ficam na aba Planejadas)
-        return result.filter(
-          (t) => t.dueDate === todayStr || !t.dueDate || t.dueDate < todayStr
-        );
-      case 'important':
-        return result.filter((t) => !t.completed && t.important);
-      case 'planned':
-        return result.filter((t) => !t.completed && !!t.dueDate);
-      case 'assigned':
-        // Somente tarefas atribuídas/criadas por mim (comparação por e-mail)
-        return result.filter(
-          (t) =>
-            !t.completed &&
-            (t.assignedTo?.toLowerCase() === userEmail.toLowerCase() ||
-              t.userEmail.toLowerCase() === userEmail.toLowerCase())
-        );
-      case 'completed':
-        return result.filter((t) => t.completed);
-      case 'all':
-      default:
-        return result.filter((t) => !t.completed);
-    }
-  }, [todos, activeFilter, searchTerm, userEmail, todayStr]);
+  const filteredTodos = useMemo(
+    () => filterTodos(todos, { filter: activeFilter, searchTerm, userEmail, todayStr }),
+    [todos, activeFilter, searchTerm, userEmail, todayStr]
+  );
 
   // Filter Counts
-  const counts = useMemo(() => {
-    return {
-      today: todos.filter((t) => !t.completed && (t.dueDate === todayStr || !t.dueDate || t.dueDate < todayStr)).length,
-      important: todos.filter((t) => !t.completed && t.important).length,
-      planned: todos.filter((t) => !t.completed && !!t.dueDate).length,
-      assigned: todos.filter(
-        (t) =>
-          !t.completed &&
-          (t.assignedTo?.toLowerCase() === userEmail.toLowerCase() ||
-            t.userEmail.toLowerCase() === userEmail.toLowerCase())
-      ).length,
-      all: todos.filter((t) => !t.completed).length,
-      completed: todos.filter((t) => t.completed).length
-    };
-  }, [todos, todayStr, userEmail]);
+  const counts = useMemo(() => countTodos(todos, { userEmail, todayStr }), [todos, todayStr, userEmail]);
 
   // Add Task Submit
   const handleAddSubmit = async (e: React.FormEvent) => {
@@ -252,64 +211,16 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
     showToast('Som do To-Do (todo.mp3) testado! 🔔', 'info');
   };
 
-  const getRepeatLabel = (repeat?: TodoRepeat) => {
-    switch (repeat) {
-      case 'daily':
-        return 'Diária';
-      case 'weekdays':
-        return 'Dias Úteis (Seg-Sex)';
-      case 'weekly':
-        return 'Semanal';
-      case 'monthly':
-        return 'Mensal';
-      default:
-        return null;
-    }
+  const FILTER_ICONS: Record<TodoFilter, React.ReactNode> = {
+    today: <Sun className="w-6 h-6 text-amber-500" />,
+    important: <Star className="w-6 h-6 text-amber-500 fill-amber-400" />,
+    planned: <Calendar className="w-6 h-6 text-cyan-600" />,
+    assigned: <User className="w-6 h-6 text-emerald-600" />,
+    completed: <CheckCircle className="w-6 h-6 text-emerald-600" />,
+    all: <ListTodo className="w-6 h-6 text-blue-600" />
   };
+  const headerInfo = { ...getFilterHeaderText(activeFilter, todayFormatted), icon: FILTER_ICONS[activeFilter] };
 
-  const getFilterHeaderInfo = () => {
-    switch (activeFilter) {
-      case 'today':
-        return {
-          title: 'Meu Dia',
-          subtitle: todayFormatted,
-          icon: <Sun className="w-6 h-6 text-amber-500" />
-        };
-      case 'important':
-        return {
-          title: 'Importantes',
-          subtitle: 'Tarefas de alta prioridade',
-          icon: <Star className="w-6 h-6 text-amber-500 fill-amber-400" />
-        };
-      case 'planned':
-        return {
-          title: 'Planejadas',
-          subtitle: 'Tarefas com data de vencimento agendada',
-          icon: <Calendar className="w-6 h-6 text-cyan-600" />
-        };
-      case 'assigned':
-        return {
-          title: 'Atribuídas / Gmail',
-          subtitle: 'Tarefas vinculadas a contas de e-mail reais do Gmail',
-          icon: <User className="w-6 h-6 text-emerald-600" />
-        };
-      case 'completed':
-        return {
-          title: 'Concluídas',
-          subtitle: 'Histórico de tarefas finalizadas',
-          icon: <CheckCircle className="w-6 h-6 text-emerald-600" />
-        };
-      case 'all':
-      default:
-        return {
-          title: 'Todas as Tarefas',
-          subtitle: 'Visão geral de todas as tarefas ativas',
-          icon: <ListTodo className="w-6 h-6 text-blue-600" />
-        };
-    }
-  };
-
-  const headerInfo = getFilterHeaderInfo();
 
   return (
     <div className="space-y-6 fade-in no-print">
@@ -686,6 +597,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
               {(() => {
                 const renderTaskCard = (task: TodoItem) => {
                   const repeatText = getRepeatLabel(task.repeat);
+                  const dueBadge = getDueBadge(task, todayStr);
                   const isSelected = activeTask?.id === task.id;
                   const completedSteps = task.steps?.filter((s) => s.completed).length || 0;
                   const totalSteps = task.steps?.length || 0;
@@ -728,7 +640,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
                             task.completed ? 'text-slate-400 line-through' : 'text-slate-900'
                           }`}
                         >
-                          {task.title || (task as any).description || (task as any).text || (task as any).name || (task as any).nome || 'Tarefa sem título'}
+                          {getTaskTitle(task, 'Tarefa sem título')}
                         </p>
 
                         {/* Badges / Chips */}
@@ -741,23 +653,18 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
                           )}
 
                           {/* Due Date & Time */}
-                          {task.dueDate && (
+                          {dueBadge && (
                             <span
                               className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                                task.dueDate === todayStr
+                                dueBadge.tone === 'today'
                                   ? 'bg-amber-100 text-amber-900 border-amber-300'
-                                  : task.dueDate < todayStr
+                                  : dueBadge.tone === 'overdue'
                                   ? 'bg-rose-100 text-rose-900 border-rose-300'
                                   : 'bg-cyan-50 text-cyan-900 border-cyan-300 font-semibold'
                               }`}
                             >
                               <Calendar className="w-2.5 h-2.5" />
-                              {task.dueDate === todayStr
-                                ? 'Hoje'
-                                : task.dueDate < todayStr
-                                ? `Atrasada: ${formatDateBR(task.dueDate)}`
-                                : `Agendada: ${formatDateBR(task.dueDate)}`}
-                              {task.dueTime ? ` @ ${task.dueTime}` : ''}
+                              {dueBadge.label}
                             </span>
                           )}
 
@@ -833,18 +740,12 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
                 };
 
                 if (activeFilter === 'today') {
-                  const overdueTasks = filteredTodos.filter(
-                    (t) => !t.completed && t.dueDate && t.dueDate < todayStr
-                  );
-                  const todayTasks = filteredTodos.filter(
-                    (t) => !t.completed && (t.dueDate === todayStr || !t.dueDate)
-                  );
-                  const completedToday = filteredTodos.filter(
-                    (t) => t.completed
-                  );
-                  const upcomingCount = todos.filter(
-                    (t) => !t.completed && t.dueDate && t.dueDate > todayStr
-                  ).length;
+                  const {
+                    overdue: overdueTasks,
+                    today: todayTasks,
+                    completed: completedToday,
+                    upcomingCount
+                  } = splitMyDay(filteredTodos, todos, todayStr);
 
                   return (
                     <div className="space-y-4">
@@ -938,7 +839,7 @@ export const TodoManager: React.FC<TodoManagerProps> = ({
                 </button>
                 <input
                   type="text"
-                  value={activeTask.title || (activeTask as any).description || (activeTask as any).text || (activeTask as any).name || ''}
+                  value={getTaskTitle(activeTask)}
                   onChange={(e) => updateTodo(activeTask.id, { title: e.target.value })}
                   placeholder="Título da tarefa..."
                   className={`w-full text-base font-bold bg-transparent border-0 focus:outline-none focus:ring-1 focus:ring-amber-400 rounded px-1 text-slate-900 ${
