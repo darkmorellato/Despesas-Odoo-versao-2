@@ -17,7 +17,7 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
-import { deleteDoc, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, deleteDoc, doc, getDoc, getDocs, orderBy, query, setDoc, updateDoc, where } from 'firebase/firestore';
 
 const TEAM_EMAIL = 'miplaceabner@miplace.com';
 const OWNER_EMAIL = 'darkmorelato@miplace.com';
@@ -82,6 +82,11 @@ describe.each(DENIED_IDENTITIES)('acesso negado: %s', (_label, ctx) => {
       await assertFails(setDoc(doc(db, path), { hack: true }));
     }
   );
+
+  it('não lista despesas (consulta da janela recente)', async () => {
+    const q = query(collection(ctx(), `${ROOT}/team_expenses_v2`), where('date', '>=', '2026-09-01'), orderBy('date', 'desc'));
+    await assertFails(getDocs(q));
+  });
 });
 
 // --------------------------------------------------------------------- equipe
@@ -90,6 +95,11 @@ describe('equipe (e-mail/senha, e-mail autorizado)', () => {
     const db = asTeam();
     await assertSucceeds(getDoc(doc(db, path)));
     await assertSucceeds(setDoc(doc(db, path), { ok: true }));
+  });
+
+  it('lista despesas pela consulta da janela recente (where date >= + orderBy date)', async () => {
+    const q = query(collection(asTeam(), `${ROOT}/team_expenses_v2`), where('date', '>=', '2026-09-01'), orderBy('date', 'desc'));
+    await assertSucceeds(getDocs(q));
   });
 
   it('exclui despesas (exclusão lógica/física do app)', async () => {

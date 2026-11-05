@@ -388,3 +388,19 @@ type StoreName = "Piracicaba" | "Amparo" | "Todas";
 - [Firebase Documentation](https://firebase.google.com/docs)
 - [Vite Documentation](https://vitejs.dev/)
 - [Tailwind CSS Documentation](https://tailwindcss.com/)
+
+
+## Carga de despesas (janela recente + histórico sob demanda)
+
+O painel não lê todas as despesas a cada abertura. `useExpenses` assina só a janela
+recente (`where('date', '>=', início)` + `orderBy('date')`, últimos 3 meses, sem
+índice composto); medido em produção, isso evita ~77% das leituras. O histórico
+completo é pedido com `loadFullHistory()`, que só resolve quando o **servidor**
+confirmou (o 1º evento pode vir do cache local, incompleto) e rejeita com
+`HistoryLoadError` em vez de devolver lista parcial.
+
+Precisam do histórico completo: análises e fechamento (mostram um aviso de
+carregamento, nunca números parciais), busca, painel vazio, backup (usa a lista
+devolvida por `loadFullHistory`) e lançamentos com data anterior à janela. O card
+de resumo e o aviso do painel deixam claro quando o total é só do período
+carregado. A janela vive em `features/expenses/utils/historyWindow.ts`.

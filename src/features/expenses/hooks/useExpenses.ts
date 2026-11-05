@@ -1,12 +1,15 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import type { User } from 'firebase/auth';
 import { getFirebaseRefs } from '@/config/firebase';
 import { validateAnyAdminPassword } from '@/features/auth';
 import type { Expense, SyncStatus, StoreSplit, StoreName } from '@/shared/types';
 import { GROUP_STORES_MAP, STORE_GROUP_CONFIGS, LEGACY_TODAS_MEMBERS, isStoreGroupName } from '@/config/stores';
 import type { StoreGroupName } from '@/config/stores';
-import { serverTimestamp, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, writeBatch, Timestamp } from 'firebase/firestore';
+import { serverTimestamp, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, where, writeBatch, Timestamp } from 'firebase/firestore';
+import type { QuerySnapshot, DocumentData } from 'firebase/firestore';
+import { getRecentWindowStart } from '../utils/historyWindow';
 
+import { logger } from '@/shared/utils/logger';
 /**
  * Plano de alterações de um lançamento rateado (grupo de lojas). Tudo é
  * gravado numa ÚNICA operação atômica: ou o grupo inteiro muda, ou nada muda.
@@ -37,6 +40,18 @@ interface UseExpensesReturn {
   deletedExpenses: Expense[];
   /** Loading state indicator */
   isLoading: boolean;
+  /** true quando TODO o histórico está carregado (false = só a janela recente) */
+  isFullHistory: boolean;
+  /** true enquanto o histórico completo é baixado após ser pedido */
+  isLoadingHistory: boolean;
+  /** Primeiro dia (YYYY-MM-DD) da janela recente carregada por padrão */
+  recentWindowStart: string;
+  /**
+   * Pede o histórico completo e resolve (com as despesas ativas de TODO o
+   * período) só quando o servidor confirmou. Rejeita com HistoryLoadError se não
+   * conseguir (ex.: sem conexão) — nunca devolve lista parcial como se fosse completa.
+   */
+  loadFullHistory: () => Promise<Expense[]>;
   /** Current sync status with Firebase */
   syncStatus: SyncStatus;
   /** Add a new expense to Firebase */
@@ -57,15 +72,50 @@ interface UseExpensesReturn {
   canDelete: (id: string) => { allowed: boolean; reason?: string };
 }
 
+/** Falha ao obter o histórico completo (sem conexão / servidor indisponível) */
+export class HistoryLoadError extends Error {
+  constructor(message = 'Não foi possível carregar o histórico completo. Verifique a conexão.') {
+    super(message);
+    this.name = 'HistoryLoadError';
+  }
+}
+
+/** Tempo máximo esperando o servidor confirmar o histórico completo */
+export const FULL_HISTORY_TIMEOUT_MS = 20000;
+
+interface HistoryWaiter {
+  resolve: (expenses: Expense[]) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
 /**
  * Hook para gerenciar despesas com Firebase Firestore
+ *
+ * Por padrão carrega só a janela recente (últimos meses). O histórico completo
+ * é pedido sob demanda com `loadFullHistory()`.
  */
 export const useExpenses = (user: User | null): UseExpensesReturn => {
   const [allExpenses, setAllExpenses] = useState<Expense[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('offline');
+  const [historyScope, setHistoryScope] = useState<'recent' | 'all'>('recent');
+  const [historyReady, setHistoryReady] = useState(false);
 
   const firebaseRefs = useMemo(() => getFirebaseRefs(), []);
+  const recentWindowStart = useMemo(() => getRecentWindowStart(), []);
+
+  // Histórico completo confirmado pelo servidor + quem aguarda por ele
+  const fullHistoryRef = useRef<{ ready: boolean; list: Expense[] }>({ ready: false, list: [] });
+  const waitersRef = useRef<HistoryWaiter[]>([]);
+
+  const settleWaiters = useCallback((outcome: { ok: true; list: Expense[] } | { ok: false; error: Error }) => {
+    for (const w of waitersRef.current.splice(0)) {
+      clearTimeout(w.timer);
+      if (outcome.ok) w.resolve(outcome.list);
+      else w.reject(outcome.error);
+    }
+  }, []);
 
   // Read expenses from Firebase
   useEffect(() => {
@@ -75,16 +125,24 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
       setIsLoading(false);
       setAllExpenses([]);
       setSyncStatus('offline');
+      // Nova sessão recomeça pela janela recente
+      setHistoryScope('recent');
+      setHistoryReady(false);
+      fullHistoryRef.current = { ready: false, list: [] };
+      settleWaiters({ ok: false, error: new HistoryLoadError('Sessão encerrada.') });
       return;
     }
 
     setSyncStatus('syncing');
 
-    const q = query(firebaseRefs.expensesRef, orderBy('date', 'desc'));
+    const isAll = historyScope === 'all';
+    const q = isAll
+      ? query(firebaseRefs.expensesRef, orderBy('date', 'desc'))
+      // Janela recente: um único campo (filtro + ordenação em `date`) — não
+      // exige índice composto.
+      : query(firebaseRefs.expensesRef, where('date', '>=', recentWindowStart), orderBy('date', 'desc'));
 
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
+    const onNext = (snapshot: QuerySnapshot<DocumentData>) => {
         const loadedExpenses = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...(doc.data() || {})
@@ -92,16 +150,52 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
         setAllExpenses(loadedExpenses);
         setSyncStatus('synced');
         setIsLoading(false);
-      },
-      (err) => {
-        console.error("Erro leitura despesas:", err);
+
+        if (isAll) {
+          // Sem conexão o servidor não responde: aceita o cache (comportamento
+          // de antes, quando tudo funcionava offline pelo cache persistente).
+          const confirmed = !snapshot.metadata?.fromCache || (typeof navigator !== 'undefined' && !navigator.onLine);
+          if (confirmed) {
+            const active = loadedExpenses.filter(e => !e.deleted);
+            fullHistoryRef.current = { ready: true, list: active };
+            setHistoryReady(true);
+            settleWaiters({ ok: true, list: active });
+          }
+        }
+    };
+    const onError = (err: Error) => {
+        logger.error("Erro leitura despesas:", err);
         setSyncStatus('error');
         setIsLoading(false);
-      }
-    );
+        if (isAll) settleWaiters({ ok: false, error: new HistoryLoadError() });
+    };
+
+    // No histórico completo, também escuta mudança de metadados: o primeiro
+    // evento costuma vir do cache local (possivelmente incompleto) e só o
+    // evento seguinte, já confirmado pelo servidor, prova que está completo.
+    const unsubscribe = isAll
+      ? onSnapshot(q, { includeMetadataChanges: true }, onNext, onError)
+      : onSnapshot(q, onNext, onError);
 
     return () => unsubscribe();
-  }, [user, firebaseRefs.expensesRef]);
+  }, [user, firebaseRefs.expensesRef, historyScope, recentWindowStart, settleWaiters]);
+
+  // Cancela pedidos pendentes ao desmontar
+  useEffect(() => () => settleWaiters({ ok: false, error: new HistoryLoadError('Cancelado.') }), [settleWaiters]);
+
+  const loadFullHistory = useCallback((): Promise<Expense[]> => {
+    if (!user) return Promise.reject(new HistoryLoadError('Faça login para carregar o histórico.'));
+    if (fullHistoryRef.current.ready) return Promise.resolve(fullHistoryRef.current.list);
+
+    setHistoryScope('all');
+    return new Promise<Expense[]>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        waitersRef.current = waitersRef.current.filter(w => w.timer !== timer);
+        reject(new HistoryLoadError());
+      }, FULL_HISTORY_TIMEOUT_MS);
+      waitersRef.current.push({ resolve, reject, timer });
+    });
+  }, [user]);
 
   // Separa despesas ativas das excluídas logicamente
   const expenses = useMemo(() => allExpenses.filter(e => !e.deleted), [allExpenses]);
@@ -116,7 +210,7 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
       });
       setSyncStatus('synced');
     } catch (e) {
-      console.error("Erro ao adicionar:", e);
+      logger.error("Erro ao adicionar:", e);
       setSyncStatus('error');
       throw e;
     }
@@ -138,7 +232,7 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
       setSyncStatus('synced');
       return groupId;
     } catch (e) {
-      console.error("Erro ao adicionar grupo:", e);
+      logger.error("Erro ao adicionar grupo:", e);
       setSyncStatus('error');
       throw e;
     }
@@ -177,7 +271,7 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
       await batch.commit();
       setSyncStatus('synced');
     } catch (e) {
-      console.error("Erro ao salvar grupo:", e);
+      logger.error("Erro ao salvar grupo:", e);
       setSyncStatus('error');
       throw e;
     }
@@ -192,7 +286,7 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
       });
       setSyncStatus('synced');
     } catch (e) {
-      console.error("Erro update:", e);
+      logger.error("Erro update:", e);
       setSyncStatus('error');
       throw e;
     }
@@ -213,7 +307,7 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
       });
       setSyncStatus('synced');
     } catch (e) {
-      console.error("Erro soft delete:", e);
+      logger.error("Erro soft delete:", e);
       setSyncStatus('error');
       throw e;
     }
@@ -232,7 +326,7 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
       });
       setSyncStatus('synced');
     } catch (e) {
-      console.error("Erro ao restaurar despesa:", e);
+      logger.error("Erro ao restaurar despesa:", e);
       setSyncStatus('error');
       throw e;
     }
@@ -245,7 +339,7 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
       await deleteDoc(docRef);
       setSyncStatus('synced');
     } catch (e) {
-      console.error("Erro hard delete:", e);
+      logger.error("Erro hard delete:", e);
       setSyncStatus('error');
       throw e;
     }
@@ -278,6 +372,10 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
     expenses,
     deletedExpenses,
     isLoading,
+    isFullHistory: historyReady,
+    isLoadingHistory: historyScope === 'all' && !historyReady,
+    recentWindowStart,
+    loadFullHistory,
     syncStatus,
     addExpense,
     addExpenseGroup,

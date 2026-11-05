@@ -42,6 +42,7 @@ vi.mock('firebase/firestore', () => ({
   }),
   query: vi.fn((ref) => ref),
   orderBy: vi.fn(() => ({})),
+  where: vi.fn(() => ({})),
   Timestamp: {
     now: vi.fn(() => ({ seconds: Date.now() / 1000, nanoseconds: 0 })),
   },

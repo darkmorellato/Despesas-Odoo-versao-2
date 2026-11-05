@@ -14,6 +14,7 @@ vi.mock('firebase/firestore', () => ({
   doc: vi.fn((_coll: unknown, id?: string) => ({ id: id ?? `auto-${++autoId}` })),
   query: vi.fn(),
   orderBy: vi.fn(),
+  where: vi.fn(),
   onSnapshot: vi.fn(),
   writeBatch: vi.fn(),
   serverTimestamp: vi.fn(() => 'SERVER_TS'),

@@ -1,6 +1,6 @@
 import React, { memo } from 'react';
 import { DollarSign, TrendingUp, BarChart2, Store } from '@/shared/components/icons';
-import { formatCurrency } from '@/shared/utils/formatters';
+import { formatCurrency, formatDateBR } from '@/shared/utils/formatters';
 import { STORE_IMAGES } from '@/config/constants';
 import type { Expense } from '@/shared/types';
 
@@ -10,6 +10,8 @@ interface ExpenseSummaryCardsProps {
   totalsByStore: Record<string, number>;
   totalGeneral: number;
   currency: string;
+  /** Quando definido, só a janela recente está carregada (YYYY-MM-DD do início) */
+  partialSince?: string | undefined;
 }
 
 export const ExpenseSummaryCards: React.FC<ExpenseSummaryCardsProps> = memo(({
@@ -17,7 +19,8 @@ export const ExpenseSummaryCards: React.FC<ExpenseSummaryCardsProps> = memo(({
   filteredExpenses,
   totalsByStore,
   totalGeneral,
-  currency
+  currency,
+  partialSince
 }) => {
   return (
     <div className="space-y-5 no-print">
@@ -62,7 +65,7 @@ export const ExpenseSummaryCards: React.FC<ExpenseSummaryCardsProps> = memo(({
           </div>
 
           <div className="mt-4">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Volume Geral Acumulado</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{partialSince ? 'Volume do Período Carregado' : 'Volume Geral Acumulado'}</p>
             <h3 className="text-3xl sm:text-4xl font-bold mt-1 text-slate-950 tabular-nums tracking-tight">
               {currency} {formatCurrency(expenses.reduce((s, e) => s + e.amount, 0))}
             </h3>
@@ -70,10 +73,10 @@ export const ExpenseSummaryCards: React.FC<ExpenseSummaryCardsProps> = memo(({
 
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
-              {expenses.length} Total Geral
+              {expenses.length} {partialSince ? 'Lançamentos' : 'Total Geral'}
             </span>
             <span className="text-xs text-cyan-600 font-semibold">
-              Histórico Completo
+              {partialSince ? `Desde ${formatDateBR(partialSince)}` : 'Histórico Completo'}
             </span>
           </div>
         </div>
