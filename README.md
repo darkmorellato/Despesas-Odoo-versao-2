@@ -148,7 +148,9 @@ interface Expense {
 |------|---------|
 | Piracicaba (DP - Realme - XV) | Divide em 3 lojas |
 | Amparo (Premium - Kassouf) | Divide em 2 lojas |
-| Todas | Divide em todas as 5 lojas |
+| Todas | Divide em 4 empresas (Dom Pedro II, Realme, XV de Novembro e Premium — a Kassouf não entra) |
+
+> Lojas, grupos, cores, imagens e ordem ficam em **`src/config/stores.ts`** (fonte única). Para mudar a composição de um grupo ou incluir uma loja, edite só esse arquivo.
 
 ## Calendário de Pagamentos
 
@@ -160,16 +162,17 @@ Pagamentos fixos com lembretes automáticos:
 
 ## Segurança
 
-- **Senhas**: nenhuma senha fica no código do cliente. Os usuários e a senha mestra
-  são gravados **apenas no Firestore**, como hash SHA-256 com salt por usuário
-  (`passwordHash`/`passwordSalt`). Cadastro/troca via `scripts/seed_users.mjs`.
-  - Migrar senhas antigas em texto plano: `node scripts/seed_users.mjs --hash-legacy`
-    (as senhas continuam as mesmas, apenas passam a ser armazenadas como hash).
-- **Exclusão**: Requer senha de administrador (validada contra o Firestore)
-- **Limite**: Exclusão permitida apenas em 24h após criação
-- **Funcionário**: Nome obrigatório antes de adicionar despesas
-- **Sincronização**: Automática quando online
-- **Firestore**: regras versionadas em `firestore.rules` (exigem autenticação)
+- **Login**: Firebase Authentication (e-mail/senha). Não há login anônimo.
+- **Firestore**: regras versionadas em `firestore.rules` — só as contas da equipe
+  acessam os dados; criar/excluir usuários e trocar senhas é exclusivo do dono.
+- **Senhas**: nenhuma senha fica no código do cliente. A senha de admin (confirmação
+  de editar/excluir) é conferida contra hash SHA-256 com salt no Firestore
+  (`scripts/seed_users.mjs`).
+- **Exclusão**: requer senha de administrador e só é permitida até 24h após a criação
+- **Funcionário**: nome obrigatório antes de adicionar despesas
+- **Sincronização**: automática quando online
+
+Passo a passo de publicação (contas, regras, ordem) e manutenção: [`docs/SECURITY.md`](docs/SECURITY.md).
 
 ## Testes
 

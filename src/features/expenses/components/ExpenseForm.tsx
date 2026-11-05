@@ -15,6 +15,7 @@ import {
 } from '@/shared/components/icons';
 import { DateInput } from '@/shared/components/ui';
 import { STORES_LIST } from '@/config/constants';
+import { getGroupHint } from '@/config/stores';
 import { compressImageFile } from '@/shared/utils/imageCompressor';
 
 interface ExpenseFormProps {
@@ -110,6 +111,7 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({
   onReset,
   showToast
 }) => {
+  const groupHint = getGroupHint(store);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const [isCompressingReceipt, setIsCompressingReceipt] = useState(false);
@@ -406,14 +408,8 @@ export const ExpenseForm: React.FC<ExpenseFormProps> = ({
                       <Store className="w-4 h-4" />
                     </div>
                   </div>
-                  {store.includes("Piracicaba") && (
-                    <p className="text-[10px] text-amber-600 font-semibold pt-0.5">* Divide por 3 lojas (Dom Pedro II, Realme, XV)</p>
-                  )}
-                  {store.includes("Amparo") && (
-                    <p className="text-[10px] text-purple-600 font-semibold pt-0.5">* Divide por 2 lojas (Premium, Kassouf)</p>
-                  )}
-                  {store === "Todas" && (
-                    <p className="text-[10px] text-emerald-600 font-semibold pt-0.5">* Divide por 5 lojas (Todas)</p>
+                  {groupHint && (
+                    <p className={`text-[10px] ${groupHint.className} font-semibold pt-0.5`}>{groupHint.text}</p>
                   )}
                 </div>
 

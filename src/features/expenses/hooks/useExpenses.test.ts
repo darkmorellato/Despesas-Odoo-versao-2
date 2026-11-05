@@ -345,20 +345,53 @@ describe('detectExpenseGroup & isGroupStore', () => {
     expect(isGroupStore('Dom Pedro II')).toBe(false);
   });
 
-  it('deve detectar grupo "Todas" com 5 lojas irmãs', () => {
+  it('deve detectar grupo "Todas" com 4 empresas irmãs', () => {
+    const base = { date: '2026-08-20', description: 'Internet Fibra', category: 'Despesa', amount: 100, originalTotal: 400 };
     const allExpenses = [
-      { id: '1', date: '2026-08-20', description: 'Internet Fibra', category: 'Despesa', store: 'Dom Pedro II', amount: 100, originalTotal: 500 },
-      { id: '2', date: '2026-08-20', description: 'Internet Fibra', category: 'Despesa', store: 'Realme', amount: 100, originalTotal: 500 },
-      { id: '3', date: '2026-08-20', description: 'Internet Fibra', category: 'Despesa', store: 'Xv de Novembro', amount: 100, originalTotal: 500 },
-      { id: '4', date: '2026-08-20', description: 'Internet Fibra', category: 'Despesa', store: 'Premium', amount: 100, originalTotal: 500 },
-      { id: '5', date: '2026-08-20', description: 'Internet Fibra', category: 'Despesa', store: 'Kassouf', amount: 100, originalTotal: 500 },
+      { id: '1', store: 'Dom Pedro II', ...base },
+      { id: '2', store: 'Realme', ...base },
+      { id: '3', store: 'Xv de Novembro', ...base },
+      { id: '4', store: 'Premium', ...base },
     ];
 
     const result = detectExpenseGroup(allExpenses[0] as any, allExpenses as any);
     expect(result.isGroup).toBe(true);
     expect(result.groupName).toBe('Todas');
+    expect(result.totalAmount).toBe(400);
+    expect(result.siblings.length).toBe(4);
+  });
+
+  it('"Todas" novo + Kassouf avulsa de mesmo dia/descrição NÃO vira legado (Kassouf fica fora)', () => {
+    const base = { date: '2026-08-20', description: 'Internet Fibra', category: 'Despesa' };
+    const allExpenses = [
+      { id: '1', store: 'Dom Pedro II', amount: 100, originalTotal: 400, ...base },
+      { id: '2', store: 'Realme', amount: 100, originalTotal: 400, ...base },
+      { id: '3', store: 'Xv de Novembro', amount: 100, originalTotal: 400, ...base },
+      { id: '4', store: 'Premium', amount: 100, originalTotal: 400, ...base },
+      { id: '5', store: 'Kassouf', amount: 80, ...base },
+    ];
+
+    const result = detectExpenseGroup(allExpenses[0] as any, allExpenses as any);
+    expect(result.groupName).toBe('Todas');
+    expect(result.totalAmount).toBe(400);
+    expect(result.siblings.map(s => s.store)).not.toContain('Kassouf');
+  });
+
+  it('lançamento histórico "Todas" de 5 lojas (com Kassouf) é preservado como individual', () => {
+    const base = { date: '2026-03-20', description: 'Internet Fibra', category: 'Despesa', amount: 100, originalTotal: 500 };
+    const allExpenses = [
+      { id: '1', store: 'Dom Pedro II', ...base },
+      { id: '2', store: 'Realme', ...base },
+      { id: '3', store: 'Xv de Novembro', ...base },
+      { id: '4', store: 'Premium', ...base },
+      { id: '5', store: 'Kassouf', ...base },
+    ];
+
+    const result = detectExpenseGroup(allExpenses[4] as any, allExpenses as any);
+    // Não vira grupo: editar não pode apagar a parcela da Kassouf
+    expect(result.groupName).toBeNull();
+    expect(result.siblings).toEqual([allExpenses[4]]);
     expect(result.totalAmount).toBe(500);
-    expect(result.siblings.length).toBe(5);
   });
 
   it('deve detectar grupo "Piracicaba" com 3 lojas irmãs', () => {

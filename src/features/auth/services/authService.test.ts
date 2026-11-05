@@ -6,9 +6,13 @@ import {
   getStoredUserSession,
 } from './authService';
 import { getDocs, getDoc } from 'firebase/firestore';
+import { signInWithEmailAndPassword, signOut } from '@/config/firebase';
 
 vi.mock('@/config/firebase', () => ({
+  auth: {},
   db: {},
+  signInWithEmailAndPassword: vi.fn(),
+  signOut: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock('firebase/firestore', () => ({
@@ -36,74 +40,84 @@ describe('authService', () => {
   });
 
   describe('authenticateUser', () => {
-    it('autentica com sucesso (doc legado com senha em texto plano)', async () => {
+    beforeEach(() => {
+      vi.mocked(signInWithEmailAndPassword).mockResolvedValue({ user: { uid: 'u' } } as never);
+    });
+
+    it('autentica no Firebase Auth e carrega o perfil do Firestore', async () => {
       vi.mocked(getDocs).mockResolvedValueOnce(usersSnapshot([
         {
           id: 'user_abner_morais',
-          data: {
-            email: 'miplaceabner@miplace.com',
-            name: 'Abner Morais',
-            role: 'Administrador',
-            password: 'senha-secreta-123',
-          },
+          data: { email: 'miplaceabner@miplace.com', name: 'Abner Morais', role: 'Administrador' },
         },
       ]) as never);
 
       const user = await authenticateUser({
-        email: 'miplaceabner@miplace.com',
-        password: 'senha-secreta-123',
+        email: ' MiplaceAbner@Miplace.com ',
+        password: ' senha-secreta-123 ',
       });
 
+      // e-mail normalizado e senha aparada antes de ir ao Firebase
+      expect(signInWithEmailAndPassword).toHaveBeenCalledWith(
+        expect.anything(), 'miplaceabner@miplace.com', 'senha-secreta-123'
+      );
+      expect(user.id).toBe('user_abner_morais');
       expect(user.name).toBe('Abner Morais');
-      expect(user.email).toBe('miplaceabner@miplace.com');
       expect(user.role).toBe('Administrador');
       expect(getStoredUserSession()?.name).toBe('Abner Morais');
     });
 
-    it('rejeita senha incorreta', async () => {
-      vi.mocked(getDocs).mockResolvedValueOnce(usersSnapshot([
-        {
-          id: 'user_1',
-          data: { email: 'miplaceabner@miplace.com', name: 'Abner', password: 'certa' },
-        },
-      ]) as never);
+    it.each([
+      ['auth/invalid-credential', 'E-mail ou senha incorretos.'],
+      ['auth/wrong-password', 'E-mail ou senha incorretos.'],
+      ['auth/user-not-found', 'E-mail ou senha incorretos.'],
+      ['auth/too-many-requests', 'Muitas tentativas'],
+      ['auth/network-request-failed', 'Verifique sua conexão'],
+      ['auth/algo-inesperado', 'Não foi possível entrar'],
+    ])('traduz o erro %s', async (code, message) => {
+      vi.mocked(signInWithEmailAndPassword).mockRejectedValueOnce(
+        Object.assign(new Error('firebase'), { code })
+      );
 
       await expect(
-        authenticateUser({ email: 'miplaceabner@miplace.com', password: 'senha_errada' })
-      ).rejects.toThrow('Senha incorreta.');
+        authenticateUser({ email: 'a@miplace.com', password: 'x' })
+      ).rejects.toThrow(message);
+      expect(getStoredUserSession()).toBeNull();
+      expect(getDocs).not.toHaveBeenCalled();
     });
 
-    it('rejeita usuário inexistente', async () => {
-      vi.mocked(getDocs).mockResolvedValueOnce(usersSnapshot([]) as never);
+    it('não revela se o e-mail existe (mesma mensagem para senha errada e usuário inexistente)', async () => {
+      vi.mocked(signInWithEmailAndPassword)
+        .mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'auth/wrong-password' }))
+        .mockRejectedValueOnce(Object.assign(new Error('x'), { code: 'auth/user-not-found' }));
 
-      await expect(
-        authenticateUser({ email: 'desconhecido@miplace.com', password: 'qualquer' })
-      ).rejects.toThrow('Usuário não encontrado.');
+      const a = await authenticateUser({ email: 'a@miplace.com', password: 'x' }).catch(e => e.message);
+      const b = await authenticateUser({ email: 'b@miplace.com', password: 'x' }).catch(e => e.message);
+      expect(a).toBe(b);
     });
 
-    it('mensagem amigável quando o Firestore está inacessível (sem fallback offline)', async () => {
-      vi.mocked(getDocs).mockRejectedValueOnce(new Error('Failed to fetch'));
+    it('login funciona mesmo se o perfil estiver inacessível (usa o e-mail como nome)', async () => {
+      vi.mocked(getDocs).mockRejectedValueOnce(new Error('permission-denied'));
 
-      await expect(
-        authenticateUser({ email: 'alguem@miplace.com', password: 'x' })
-      ).rejects.toThrow('Não foi possível conectar ao servidor de autenticação');
+      const user = await authenticateUser({ email: 'alguem@miplace.com', password: 'x' });
+      expect(user.name).toBe('alguem@miplace.com');
+      expect(user.id).toBe('alguem@miplace.com');
     });
 
     it('não inventa identidade: sem `name` no doc usa o e-mail', async () => {
       vi.mocked(getDocs).mockResolvedValueOnce(usersSnapshot([
-        { id: 'u_novo', data: { email: 'novo@miplace.com', password: 'abc123' } },
+        { id: 'u_novo', data: { email: 'novo@miplace.com' } },
       ]) as never);
 
       const user = await authenticateUser({ email: 'novo@miplace.com', password: 'abc123' });
-
       expect(user.name).toBe('novo@miplace.com');
     });
 
-    it('valida e-mail/senha vazios', async () => {
+    it('valida e-mail/senha vazios sem chamar o Firebase', async () => {
       await expect(authenticateUser({ email: '  ', password: 'x' })).rejects.toThrow(
         'Informe o e-mail e a senha.'
       );
-      expect(getDocs).not.toHaveBeenCalled();
+      expect(signInWithEmailAndPassword).not.toHaveBeenCalled();
     });
   });
 
@@ -176,15 +190,26 @@ describe('authService', () => {
   });
 
   describe('logoutUser', () => {
-    it('limpa a sessão no logout', async () => {
-      vi.mocked(getDocs).mockResolvedValueOnce(usersSnapshot([
-        { id: 'u1', data: { email: 'a@b.com', name: 'A', password: 'p' } },
-      ]) as never);
-
-      await authenticateUser({ email: 'a@b.com', password: 'p' });
+    it('limpa a sessão local e desloga do Firebase', async () => {
+      localStorage.setItem(
+        'miplace_auth_session_user',
+        JSON.stringify({ id: 'u1', name: 'A', email: 'a@b.com' })
+      );
       expect(getStoredUserSession()).not.toBeNull();
 
-      logoutUser();
+      await logoutUser();
+      expect(getStoredUserSession()).toBeNull();
+      expect(signOut).toHaveBeenCalled();
+    });
+
+    it('limpa a sessão local mesmo se o signOut falhar', async () => {
+      localStorage.setItem(
+        'miplace_auth_session_user',
+        JSON.stringify({ id: 'u1', name: 'A', email: 'a@b.com' })
+      );
+      vi.mocked(signOut).mockRejectedValueOnce(new Error('offline'));
+
+      await logoutUser();
       expect(getStoredUserSession()).toBeNull();
     });
   });

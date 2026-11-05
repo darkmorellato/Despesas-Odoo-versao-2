@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Mail, Lock, Eye, EyeOff, Shield, AlertTriangle, User } from '@/shared/components/icons';
+import { Mail, Lock, Eye, EyeOff, Shield, AlertTriangle } from '@/shared/components/icons';
 import { authenticateUser } from '../services/authService';
 import type { AuthenticatedUser } from '../types';
 

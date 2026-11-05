@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { History, Search, Trash2, Edit, User, Calendar, Tag, Store, DollarSign, Shield, Check } from '@/shared/components/icons';
+import { History, Search, Trash2, Edit, User, Shield, Check } from '@/shared/components/icons';
 import { useAuditLogs } from '../hooks/useAuditLogs';
 import { formatCurrency, formatDateBR } from '@/shared/utils/formatters';
 import { STORE_IMAGES } from '@/config/constants';

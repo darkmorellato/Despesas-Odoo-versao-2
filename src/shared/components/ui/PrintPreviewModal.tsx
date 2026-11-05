@@ -25,7 +25,6 @@ export const PrintPreviewModal: React.FC<PrintPreviewModalProps> = ({
   isOpen,
   onClose,
   expenses,
-  totalsByStore,
   totalGeneral,
   settings,
   filterMode,

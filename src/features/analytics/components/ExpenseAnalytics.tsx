@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, memo } from 'react';
 import type { Expense } from '@/shared/types';
 import { STORE_IMAGES } from '@/config/constants';
 import { formatCurrency, formatMonthBR } from '@/shared/utils/formatters';
-import { BarChart2, TrendingUp, TrendingDown, DollarSign, Calendar, Tag, Store, ChevronLeft, ChevronRight, PieChart } from '@/shared/components/icons';
+import { BarChart2, TrendingUp, TrendingDown, DollarSign, Tag, Store, ChevronLeft, ChevronRight } from '@/shared/components/icons';
 import { generateAnalyticsStats } from '../utils/analyticsEngine';
 
 interface ExpenseAnalyticsProps {

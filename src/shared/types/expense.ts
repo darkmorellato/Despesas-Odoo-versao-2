@@ -9,6 +9,8 @@ export interface Expense {
   notes?: string | undefined;
   employeeName: string;
   originalTotal?: number | null | undefined;
+  /** Id comum das parcelas de um lançamento rateado entre lojas (ausente em lançamentos antigos/individuais) */
+  groupId?: string | null | undefined;
   receiptUrl?: string | null | undefined; // Foto/anexo do comprovante ou nota fiscal
   deleted?: boolean | undefined; // Soft delete
   deletedAt?: string | null | undefined;
@@ -25,15 +27,9 @@ export interface ExpenseGroup {
   total: number;
 }
 
-export type StoreName = 
-  | "Dom Pedro II"
-  | "Realme"
-  | "Xv de Novembro"
-  | "Premium"
-  | "Kassouf"
-  | "Piracicaba (DP - Realme - XV)"
-  | "Amparo (Premium - Kassouf)"
-  | "Todas";
+// Derivado de src/config/stores.ts (fonte única das lojas)
+export type { StoreName } from '@/config/stores';
+import type { StoreName } from '@/config/stores';
 
 export type CategoryName =
   | "Despesa Fixa"

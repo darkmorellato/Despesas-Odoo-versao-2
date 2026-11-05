@@ -3,7 +3,7 @@ import type { Expense } from '@/shared/types';
 import { STORE_IMAGES, STORES_LIST } from '@/config/constants';
 import { formatCurrency, formatMonthBR, getTodayLocal } from '@/shared/utils/formatters';
 import { getStoreOrder } from '@/shared/utils/helpers';
-import { FileText, Printer, TrendingUp, TrendingDown, DollarSign, Calendar, Store, CheckCircle, ShieldCheck, ChevronLeft, ChevronRight } from '@/shared/components/icons';
+import { FileText, Printer, TrendingUp, TrendingDown, ShieldCheck, ChevronLeft, ChevronRight } from '@/shared/components/icons';
 import { exportVectorPDF } from '@/shared/utils/pdfExport';
 
 interface MonthlyClosingViewProps {

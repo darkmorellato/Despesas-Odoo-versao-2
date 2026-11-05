@@ -1,21 +1,23 @@
-import { db } from '@/config/firebase';
+import { auth, db, signInWithEmailAndPassword, signOut } from '@/config/firebase';
 import {
   collection,
   doc,
   getDoc,
   getDocs,
   setDoc,
-  deleteField,
   query,
   where,
-  serverTimestamp,
-} from 'firebase/firestore';
+  } from 'firebase/firestore';
 import type { AuthenticatedUser, UserCredentials } from '../types';
 
 // NENHUMA senha vive neste arquivo (nem no bundle do cliente).
-// Usuários e senha mestra existem apenas no Firestore, como hash SHA-256 com
-// salt por usuário (passwordHash/passwordSalt). Cadastro/troca/migração:
-//   node scripts/seed_users.mjs [--hash-legacy | --master | --change ...]
+// LOGIN: Firebase Authentication (e-mail/senha) — a senha é verificada pelo
+// servidor do Firebase e as firestore.rules só aceitam as contas da equipe.
+// Contas: node scripts/create_auth_users.mjs (ver docs/SECURITY.md).
+//
+// SENHA DE ADMIN (confirmação de editar/excluir): continua sendo conferida
+// contra o hash SHA-256 com salt guardado no Firestore (passwordHash/
+// passwordSalt), gerenciado por scripts/seed_users.mjs.
 
 const AUTH_STORAGE_KEY = 'miplace_auth_session_user';
 
@@ -31,12 +33,6 @@ const sha256Hex = async (text: string): Promise<string> => {
   return Array.from(new Uint8Array(buf))
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
-};
-
-const newSalt = (): string => {
-  const bytes = new Uint8Array(16);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 };
 
 /**
@@ -59,34 +55,23 @@ const verifyUserPassword = async (
   return false;
 };
 
-/**
- * Migração oportunista: converte senha legada em texto plano para hash no
- * primeiro login bem-sucedido (a senha NÃO muda). Melhor esforço — se falhar
- * (regras do Firestore, rede), o login continua funcionando com o formato antigo.
- */
-const upgradeLegacyPassword = async (userId: string, password: string): Promise<void> => {
-  try {
-    const salt = newSalt();
-    await setDoc(
-      doc(getUsersColl(), userId),
-      {
-        passwordHash: await sha256Hex(`${salt}:${password}`),
-        passwordSalt: salt,
-        password: deleteField(),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-  } catch (e) {
-    console.warn('Não foi possível migrar a senha para hash (seguindo com o formato antigo):', e);
-  }
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  'auth/invalid-credential': 'E-mail ou senha incorretos.',
+  'auth/wrong-password': 'E-mail ou senha incorretos.',
+  'auth/user-not-found': 'E-mail ou senha incorretos.',
+  'auth/invalid-email': 'E-mail inválido.',
+  'auth/user-disabled': 'Esta conta foi desativada.',
+  'auth/too-many-requests': 'Muitas tentativas. Aguarde alguns minutos e tente novamente.',
+  'auth/network-request-failed': 'Não foi possível conectar ao servidor de autenticação. Verifique sua conexão.',
+  'auth/operation-not-allowed': 'Login por e-mail/senha não está habilitado no Firebase.',
 };
 
 /**
- * Consulta o Firestore e autentica o usuário.
- * A senha é verificada SEMPRE contra o Firestore — não existe fallback local
- * (o antigo fallback aceitava as senhas hardcoded do bundle se a rede caísse,
- * tornando qualquer revogação de senha inútil).
+ * Autentica no Firebase Auth (e-mail/senha) e carrega o perfil (nome/perfil)
+ * de system_users_v1.
+ *
+ * Mensagens de erro NÃO distinguem "usuário inexistente" de "senha errada"
+ * (evita enumeração de contas).
  */
 export const authenticateUser = async ({ email, password }: UserCredentials): Promise<AuthenticatedUser> => {
   const normalizedEmail = email.toLowerCase().trim();
@@ -96,49 +81,42 @@ export const authenticateUser = async ({ email, password }: UserCredentials): Pr
     throw new Error('Informe o e-mail e a senha.');
   }
 
-  let data: Record<string, unknown>;
-  let userId: string;
+  try {
+    await signInWithEmailAndPassword(auth, normalizedEmail, trimmedPassword);
+  } catch (error) {
+    const code = (error as { code?: string })?.code ?? '';
+    console.warn('Falha no login:', code || error);
+    throw new Error(AUTH_ERROR_MESSAGES[code] ?? 'Não foi possível entrar. Tente novamente.');
+  }
+
+  // Perfil (best-effort): sem ele o login continua, usando o e-mail como nome.
+  let userId = normalizedEmail;
+  let profile: Record<string, unknown> = {};
   try {
     const snapshot = await getDocs(
       query(getUsersColl(), where('email', '==', normalizedEmail))
     );
-    if (snapshot.empty) {
-      throw new Error('Usuário não encontrado.');
+    if (!snapshot.empty) {
+      userId = snapshot.docs[0].id;
+      profile = snapshot.docs[0].data();
     }
-    const userDoc = snapshot.docs[0];
-    data = userDoc.data();
-    userId = userDoc.id;
   } catch (error) {
-    if (error instanceof Error && error.message === 'Usuário não encontrado.') {
-      throw error;
-    }
-    // Erro de rede/permissão: mensagem amigável em vez do payload do SDK
-    console.warn('Falha ao consultar usuário no Firestore:', error);
-    throw new Error('Não foi possível conectar ao servidor de autenticação. Verifique sua conexão.');
-  }
-
-  if (!(await verifyUserPassword(data, trimmedPassword))) {
-    throw new Error('Senha incorreta.');
-  }
-
-  // Migra texto plano → hash (primeiro login após o deploy desta versão)
-  if (typeof data.password === 'string' && !data.passwordHash) {
-    await upgradeLegacyPassword(userId, trimmedPassword);
+    console.warn('Perfil do usuário indisponível (seguindo só com o e-mail):', error);
   }
 
   const authenticatedUser: AuthenticatedUser = {
     id: userId,
     // Nunca inventa identidade: sem `name` no doc, usa o próprio e-mail
-    // (o antigo fallback atribuía "Abner Morais" a qualquer usuário novo,
-    // corrompendo auditoria e autoria de despesas)
-    name: (typeof data.name === 'string' && data.name.trim()) || normalizedEmail,
+    name: (typeof profile.name === 'string' && profile.name.trim()) || normalizedEmail,
     email: normalizedEmail,
-    role: (typeof data.role === 'string' && data.role) || 'Administrador',
+    role: (typeof profile.role === 'string' && profile.role) || 'Administrador',
     lastLogin: new Date().toISOString(),
   };
 
-  setDoc(doc(getUsersColl(), userId), { lastLogin: authenticatedUser.lastLogin }, { merge: true })
-    .catch(() => { /* último login é best-effort */ });
+  if (userId !== normalizedEmail) {
+    setDoc(doc(getUsersColl(), userId), { lastLogin: authenticatedUser.lastLogin }, { merge: true })
+      .catch(() => { /* último login é best-effort */ });
+  }
 
   localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authenticatedUser));
   return authenticatedUser;
@@ -209,8 +187,13 @@ export const getStoredUserSession = (): AuthenticatedUser | null => {
 };
 
 /**
- * Realiza logout do usuário
+ * Encerra a sessão: limpa o perfil em cache e desloga do Firebase Auth.
  */
-export const logoutUser = (): void => {
+export const logoutUser = async (): Promise<void> => {
   localStorage.removeItem(AUTH_STORAGE_KEY);
+  try {
+    await signOut(auth);
+  } catch (error) {
+    console.warn('Falha ao encerrar a sessão no Firebase:', error);
+  }
 };

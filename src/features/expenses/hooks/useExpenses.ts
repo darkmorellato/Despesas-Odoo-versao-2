@@ -3,7 +3,28 @@ import type { User } from 'firebase/auth';
 import { getFirebaseRefs } from '@/config/firebase';
 import { validateAnyAdminPassword } from '@/features/auth';
 import type { Expense, SyncStatus, StoreSplit, StoreName } from '@/shared/types';
-import { serverTimestamp, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, Timestamp } from 'firebase/firestore';
+import { GROUP_STORES_MAP, STORE_GROUP_CONFIGS, LEGACY_TODAS_MEMBERS, isStoreGroupName } from '@/config/stores';
+import type { StoreGroupName } from '@/config/stores';
+import { serverTimestamp, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, writeBatch, Timestamp } from 'firebase/firestore';
+
+/**
+ * Plano de alterações de um lançamento rateado (grupo de lojas). Tudo é
+ * gravado numa ÚNICA operação atômica: ou o grupo inteiro muda, ou nada muda.
+ */
+export interface ExpenseGroupPlan {
+  /** Parcelas existentes a atualizar */
+  updates: Array<{ id: string; data: Partial<Expense> }>;
+  /** Parcelas novas (loja que passou a fazer parte do grupo) */
+  adds: Array<Omit<Expense, 'id'>>;
+  /** Parcelas a excluir logicamente (loja que saiu do grupo) */
+  removes: Array<{ id: string; reason?: string; deletedBy?: string }>;
+  /**
+   * Id do grupo gravado nas parcelas mantidas/novas.
+   * `undefined` = gera um novo (ex.: edição de lançamento antigo sem groupId);
+   * `null` = desagrupa (a parcela mantida vira lançamento individual).
+   */
+  groupId?: string | null | undefined;
+}
 
 /**
  * Return type for useExpenses hook
@@ -20,6 +41,10 @@ interface UseExpensesReturn {
   syncStatus: SyncStatus;
   /** Add a new expense to Firebase */
   addExpense: (expense: Omit<Expense, 'id'>) => Promise<void>;
+  /** Cria todas as parcelas de um rateio de forma atômica (writeBatch) e devolve o groupId */
+  addExpenseGroup: (entries: Array<Omit<Expense, 'id'>>) => Promise<string>;
+  /** Aplica a edição de um grupo (update/add/remove) de forma atômica */
+  saveExpenseGroup: (plan: ExpenseGroupPlan) => Promise<void>;
   /** Update an existing expense */
   updateExpense: (id: string, updates: Partial<Expense>) => Promise<void>;
   /** Soft delete an expense from Firebase */
@@ -92,6 +117,67 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
       setSyncStatus('synced');
     } catch (e) {
       console.error("Erro ao adicionar:", e);
+      setSyncStatus('error');
+      throw e;
+    }
+  }, [firebaseRefs.expensesRef]);
+
+  const addExpenseGroup = useCallback(async (entries: Array<Omit<Expense, 'id'>>): Promise<string> => {
+    try {
+      const groupId = doc(firebaseRefs.expensesRef).id;
+      const batch = writeBatch(firebaseRefs.expensesRef.firestore);
+      for (const entry of entries) {
+        batch.set(doc(firebaseRefs.expensesRef), {
+          ...entry,
+          groupId,
+          deleted: false,
+          createdAt: serverTimestamp()
+        });
+      }
+      await batch.commit();
+      setSyncStatus('synced');
+      return groupId;
+    } catch (e) {
+      console.error("Erro ao adicionar grupo:", e);
+      setSyncStatus('error');
+      throw e;
+    }
+  }, [firebaseRefs.expensesRef]);
+
+  const saveExpenseGroup = useCallback(async (plan: ExpenseGroupPlan): Promise<void> => {
+    try {
+      const groupId = plan.groupId === undefined ? doc(firebaseRefs.expensesRef).id : plan.groupId;
+      const batch = writeBatch(firebaseRefs.expensesRef.firestore);
+
+      for (const { id, data } of plan.updates) {
+        batch.update(doc(firebaseRefs.expensesRef, id), {
+          ...data,
+          groupId,
+          updatedAt: serverTimestamp()
+        });
+      }
+      for (const entry of plan.adds) {
+        batch.set(doc(firebaseRefs.expensesRef), {
+          ...entry,
+          groupId,
+          deleted: false,
+          createdAt: serverTimestamp()
+        });
+      }
+      for (const rem of plan.removes) {
+        batch.update(doc(firebaseRefs.expensesRef, rem.id), {
+          deleted: true,
+          deletedAt: serverTimestamp(),
+          deleteReason: rem.reason || 'Excluído pelo usuário',
+          deletedBy: rem.deletedBy || 'Administrador',
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      await batch.commit();
+      setSyncStatus('synced');
+    } catch (e) {
+      console.error("Erro ao salvar grupo:", e);
       setSyncStatus('error');
       throw e;
     }
@@ -194,6 +280,8 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
     isLoading,
     syncStatus,
     addExpense,
+    addExpenseGroup,
+    saveExpenseGroup,
     updateExpense,
     deleteExpense,
     restoreExpense,
@@ -217,16 +305,13 @@ export const useExpenses = (user: User | null): UseExpensesReturn => {
  * const splits = splitExpense("Piracicaba (DP - Realme - XV)", 3000);
  * // Retorna: [{ s: "Dom Pedro II", v: 1000 }, { s: "Realme", v: 1000 }, { s: "Xv de Novembro", v: 1000 }]
  * 
- * // Divisão Todas (5 lojas)
- * const allSplits = splitExpense("Todas", 5000);
- * // Retorna divisão igual entre as 5 lojas
+ * // Divisão Todas (4 empresas: Dom Pedro II, Realme, XV e Premium — Kassouf fica de fora)
+ * const allSplits = splitExpense("Todas", 4000);
+ * // Retorna divisão igual entre as 4 empresas
  * ```
  */
-export const GROUP_STORES_MAP: Record<string, StoreName[]> = {
-  "Todas": ["Dom Pedro II", "Realme", "Xv de Novembro", "Premium", "Kassouf"],
-  "Piracicaba (DP - Realme - XV)": ["Dom Pedro II", "Realme", "Xv de Novembro"],
-  "Amparo (Premium - Kassouf)": ["Premium", "Kassouf"]
-};
+// Composição dos grupos: fonte única em src/config/stores.ts
+export { GROUP_STORES_MAP };
 
 export const splitExpense = (store: StoreName, totalAmount: number): StoreSplit[] => {
   const stores = GROUP_STORES_MAP[store];
@@ -250,9 +335,7 @@ export const splitExpense = (store: StoreName, totalAmount: number): StoreSplit[
   }));
 };
 
-export const isGroupStore = (store: string): store is "Todas" | "Piracicaba (DP - Realme - XV)" | "Amparo (Premium - Kassouf)" => {
-  return store === "Todas" || store === "Piracicaba (DP - Realme - XV)" || store === "Amparo (Premium - Kassouf)";
-};
+export const isGroupStore = (store: string): store is StoreGroupName => isStoreGroupName(store);
 
 export interface DetectedExpenseGroup {
   isGroup: boolean;
@@ -262,7 +345,7 @@ export interface DetectedExpenseGroup {
 }
 
 /**
- * Detecta se uma despesa faz parte de um grupo rateado (Todas, Piracicaba ou Amparo)
+ * Detecta se uma despesa faz parte de um grupo rateado (Todas [4 empresas], Piracicaba ou Amparo)
  * e retorna seus irmãos e o valor total acumulado.
  */
 export const detectExpenseGroup = (
@@ -283,7 +366,32 @@ export const detectExpenseGroup = (
     };
   }
 
-  // Busca despesas ativas não-deletadas com mesma data, descrição, categoria
+  // Caminho principal: parcelas ligadas por `groupId` (lançamentos novos).
+  // Sem heurística — não confunde duas despesas legítimas parecidas.
+  if (expense.groupId) {
+    const siblings = allExpenses.filter(e => !e.deleted && e.groupId === expense.groupId);
+    if (siblings.length > 1) {
+      const siblingStores = new Set(siblings.map(e => e.store));
+      const groupName = (Object.keys(GROUP_STORES_MAP) as StoreName[]).find(name => {
+        const members = GROUP_STORES_MAP[name];
+        return members.length === siblingStores.size && members.every(m => siblingStores.has(m));
+      });
+      if (groupName) {
+        const totalAmount = expense.originalTotal ?? siblings.reduce((sum, s) => sum + s.amount, 0);
+        return { isGroup: true, groupName, siblings, totalAmount };
+      }
+    }
+    // Grupo de uma parcela só (as outras foram removidas) ou composição que não
+    // corresponde a nenhum grupo: edita como lançamento individual.
+    return {
+      isGroup: false,
+      groupName: null,
+      siblings: [expense],
+      totalAmount: expense.originalTotal ?? expense.amount
+    };
+  }
+
+  // Lançamentos antigos (sem groupId): heurística por data + descrição + categoria
   // (guards: doc sem `description` quebrava .trim() com TypeError)
   const targetDescription = (expense.description ?? '').trim().toLowerCase();
   const matchingCandidates = allExpenses.filter(e =>
@@ -295,28 +403,36 @@ export const detectExpenseGroup = (
 
   const storesSet = new Set(matchingCandidates.map(e => e.store));
 
-  // Verifica "Todas" (5 lojas)
-  const todasStores = GROUP_STORES_MAP["Todas"];
-  if (todasStores.every(s => storesSet.has(s))) {
-    const siblings = matchingCandidates.filter(e => todasStores.includes(e.store as StoreName));
-    const totalAmount = expense.originalTotal ?? siblings.reduce((sum, s) => sum + s.amount, 0);
-    return { isGroup: true, groupName: "Todas", siblings, totalAmount };
+  // Lançamento HISTÓRICO "Todas" de 5 lojas (anterior à saída da Kassouf):
+  // o rateio foi gravado com a Kassouf, então NÃO pode ser tratado como grupo
+  // — senão uma edição apagaria a parcela da Kassouf. Fica como despesa
+  // individual (cada linha é editada isoladamente, o histórico é preservado).
+  // Diferencia-se de um "Todas" novo + Kassouf avulsa pelo total: no legado a
+  // soma das 5 parcelas fecha com o originalTotal.
+  if (LEGACY_TODAS_MEMBERS.every(s => storesSet.has(s))) {
+    const legacySum = matchingCandidates
+      .filter(e => LEGACY_TODAS_MEMBERS.includes(e.store))
+      .reduce((sum, e) => sum + e.amount, 0);
+    const legacyTotal = expense.originalTotal;
+    if (legacyTotal == null || Math.abs(legacySum - legacyTotal) < 0.015) {
+      return {
+        isGroup: false,
+        groupName: null,
+        siblings: [expense],
+        totalAmount: expense.originalTotal ?? expense.amount
+      };
+    }
   }
 
-  // Verifica "Piracicaba (DP - Realme - XV)" (3 lojas)
-  const piraStores = GROUP_STORES_MAP["Piracicaba (DP - Realme - XV)"];
-  if (piraStores.every(s => storesSet.has(s))) {
-    const siblings = matchingCandidates.filter(e => piraStores.includes(e.store as StoreName));
-    const totalAmount = expense.originalTotal ?? siblings.reduce((sum, s) => sum + s.amount, 0);
-    return { isGroup: true, groupName: "Piracicaba (DP - Realme - XV)", siblings, totalAmount };
-  }
-
-  // Verifica "Amparo (Premium - Kassouf)" (2 lojas)
-  const amparoStores = GROUP_STORES_MAP["Amparo (Premium - Kassouf)"];
-  if (amparoStores.every(s => storesSet.has(s))) {
-    const siblings = matchingCandidates.filter(e => amparoStores.includes(e.store as StoreName));
-    const totalAmount = expense.originalTotal ?? siblings.reduce((sum, s) => sum + s.amount, 0);
-    return { isGroup: true, groupName: "Amparo (Premium - Kassouf)", siblings, totalAmount };
+  // Primeiro grupo (do maior para o menor, ordem em STORE_GROUP_CONFIGS) cujas
+  // lojas estejam todas presentes entre os candidatos
+  for (const group of STORE_GROUP_CONFIGS) {
+    const members: readonly string[] = group.members;
+    if (members.every(m => storesSet.has(m))) {
+      const siblings = matchingCandidates.filter(e => members.includes(e.store));
+      const totalAmount = expense.originalTotal ?? siblings.reduce((sum, s) => sum + s.amount, 0);
+      return { isGroup: true, groupName: group.name, siblings, totalAmount };
+    }
   }
 
   // Caso padrão: despesa individual

@@ -1,19 +1,22 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef, Suspense, lazy } from 'react';
-import { useAuth, useToast, useBackup } from '@/shared/hooks';
-import { useExpenses, splitExpense, validateAdminPassword, detectExpenseGroup, isGroupStore, ExpenseTableRow, ExpenseForm } from '@/features/expenses';
+import { useAuth, useToast, useBackup, useAppSettings, usePendingAlerts } from '@/shared/hooks';
+import { auth as firebaseAuth } from '@/config/firebase';
+import { useExpenses, useExpenseEditor, useExpenseFilters, ExpenseTableRow, ExpenseForm } from '@/features/expenses';
+import { EditPasswordModal } from '@/features/expenses/components/EditPasswordModal';
+import { DeleteExpenseModal } from '@/features/expenses/components/DeleteExpenseModal';
+import { SettingsModal } from './components/SettingsModal';
+import { BackupModal } from './components/BackupModal';
+import { AppSidebar } from './components/AppSidebar';
+import type { SortField } from '@/features/expenses';
 import { ExpenseSummaryCards } from '@/features/dashboard/components/ExpenseSummaryCards';
 import { useCalendar } from '@/features/calendar/hooks/useCalendar';
 import { useFixedPayments } from '@/features/fixed-payments/hooks/useFixedPayments';
 import { LoginScreen, getStoredUserSession, logoutUser } from '@/features/auth';
 import type { AuthenticatedUser } from '@/features/auth';
-import { logAuditEvent } from '@/features/audit';
 import { useTodo } from '@/features/todo';
-import { CATEGORIES_LIST, STORE_IMAGES } from '@/config/constants';
+import { STORE_IMAGES } from '@/config/constants';
 import { getTodayLocal, formatDateBR, formatMonthBR, formatCurrency } from '@/shared/utils/formatters';
-import { getStoreOrder } from '@/shared/utils/helpers';
-import { playCalendarAlertSound, playTodoAlertSound } from '@/shared/utils/audio';
-import { exportVectorPDF, openVectorPDFInNewTab } from '@/shared/utils/pdfExport';
-import { ToastContainer, DateInput, PendingPaymentsAlert, PrintPreviewModal, ReceiptModal } from '@/shared/components/ui';
+import { ToastContainer, PendingPaymentsAlert, PrintPreviewModal, ReceiptModal } from '@/shared/components/ui';
 import { LoadingSpinner } from '@/shared/components/ui/LoadingSpinner';
 
 const ExpenseCalendar = lazy(() => import('@/features/calendar/components/ExpenseCalendar').then(m => ({ default: m.ExpenseCalendar })));
@@ -24,44 +27,21 @@ const AuditManager = lazy(() => import('@/features/audit/components/AuditManager
 const TodoManager = lazy(() => import('@/features/todo/components/TodoManager').then(m => ({ default: m.TodoManager })));
 
 import {
-  ListTodo,
-  FileText,
-  Edit,
-  Trash2,
   Download,
-  Settings,
   Calendar,
   Printer,
   X,
   AlertCircle,
-  Save,
   Upload,
   Search,
   ChevronLeft,
   ChevronRight,
-  CheckSquare,
-  HardDrive,
-  Cloud,
-  Home,
-  BarChart2,
   ArrowUp,
   ArrowDown,
   ArrowUpDown,
-  Menu,
-  LogOut,
-  History
 } from '@/shared/components/icons';
-import type { Expense, ExpenseGroup, Settings as SettingsType, ViewMode, FilterMode, GroupByMode } from '@/shared/types';
+import type { Expense, ViewMode } from '@/shared/types';
 import '../styles/index.css';
-
-const DEFAULT_SETTINGS: SettingsType = {
-  employeeName: "Seu Nome",
-  currency: "R$",
-  categories: CATEGORIES_LIST.map(cat => ({ label: cat, odooRef: cat }))
-};
-
-type SortField = 'store' | 'employeeName' | 'category' | 'date' | 'description' | 'amount';
-type SortOrder = 'asc' | 'desc';
 
 export default function App() {
   // Database user authentication session
@@ -76,9 +56,9 @@ export default function App() {
   }, [sessionUser]);
 
   // Auth and data hooks
-  const { user, syncStatus, error: authError } = useAuth();
-  const { expenses, isLoading: expensesLoading, addExpense, updateExpense, deleteExpense, canDelete } = useExpenses(user);
-  const { checks, isLoading: checksLoading, toggleCheck, getPendingPayments, syncError } = useCalendar(user);
+  const { user, authReady, syncStatus } = useAuth();
+  const { expenses, isLoading: expensesLoading, addExpense, addExpenseGroup, saveExpenseGroup, updateExpense, deleteExpense, canDelete } = useExpenses(user);
+  const { checks, toggleCheck, getPendingPayments, syncError } = useCalendar(user);
   const { 
     payments: fixedPayments, 
     addPayment: addFixedPayment, 
@@ -92,332 +72,77 @@ export default function App() {
   const { saveToComputer, handleRestoreFile, exportToCSV } = useBackup();
 
   // Local state
-  const [settings, setSettings] = useState<SettingsType>(DEFAULT_SETTINGS);
+  const { settings, setSettings } = useAppSettings(sessionUser?.name ?? null);
   const todoHookData = useTodo(
     sessionUser?.name || settings.employeeName,
     sessionUser?.email || ''
   );
   const { todos, toggleComplete: toggleTodoComplete } = todoHookData;
   const [currentView, setCurrentView] = useState<ViewMode>('dashboard');
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const originalExpenseForAudit = useRef<Expense | null>(null);
-  const editingGroupSiblings = useRef<Expense[]>([]);
-  
-  // Modals for editing and deleting with password verification
-  const [editPasswordModal, setEditPasswordModal] = useState<{ open: boolean; expense: Expense | null }>({ open: false, expense: null });
-  const [editPasswordInput, setEditPasswordInput] = useState('');
-  const [editReason, setEditReason] = useState('');
-  
-  const [deleteModal, setDeleteModal] = useState<{ open: boolean; step: 'confirm' | 'password'; expense: Expense | null }>({ open: false, step: 'confirm', expense: null });
-  const [deletePasswordInput, setDeletePasswordInput] = useState('');
-  const [deleteReason, setDeleteReason] = useState('');
 
   // Comprovante visualizer
   const [viewReceiptExpense, setViewReceiptExpense] = useState<Expense | null>(null);
 
   const [showBackupOptions, setShowBackupOptions] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [showReminder, setShowReminder] = useState(false);
-  const [pendingItems, setPendingItems] = useState<any[]>([]);
   const [showPrintPreview, setShowPrintPreview] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  
-  // Table Sorting
-  const [sortField, setSortField] = useState<SortField>('date');
-  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
 
-  // Form state
-  const [date, setDate] = useState(getTodayLocal());
-  const [description, setDescription] = useState('');
-  const [store, setStore] = useState('');
-  const [category, setCategory] = useState('');
-  const [amount, setAmount] = useState('');
-  const [notes, setNotes] = useState('');
-  const [receiptUrl, setReceiptUrl] = useState<string | undefined>(undefined);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  // Alertas periódicos (contas pendentes + tarefas vencidas)
+  const { showReminder, setShowReminder, pendingItems } = usePendingAlerts({
+    enabled: !!sessionUser,
+    checks,
+    fixedPayments,
+    getPendingPayments,
+    todos,
+  });
 
-  // Filter state
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterMode, setFilterMode] = useState<FilterMode>('day');
-  const [groupBy, setGroupBy] = useState<GroupByMode>('date');
-  const [selectedDate, setSelectedDate] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState('');
+  // Filtro, agrupamento, ordenação e totais da listagem
+  const {
+    searchTerm, setSearchTerm,
+    filterMode, setFilterMode,
+    groupBy, setGroupBy,
+    selectedDate, setSelectedDate,
+    selectedMonth, setSelectedMonth,
+    sortField, sortOrder, handleSort,
+    availableDates, availableMonths,
+    revealSavedExpense,
+    filteredExpenses, groupedExpenses, totalsByStore, totalGeneral,
+    currentPeriodLabel, pdfPeriodLabel,
+  } = useExpenseFilters(expenses);
+
+  // Formulário de lançamento + fluxos de salvar / editar / excluir
+  const editorActions = useMemo(
+    () => ({ addExpense, addExpenseGroup, saveExpenseGroup, updateExpense, deleteExpense, canDelete }),
+    [addExpense, addExpenseGroup, saveExpenseGroup, updateExpense, deleteExpense, canDelete]
+  );
+  const onNeedEmployeeName = useCallback(() => setIsSettingsOpen(true), []);
+  const onEditLoaded = useCallback(() => {
+    setCurrentView('dashboard');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+  const {
+    date, setDate, description, setDescription, store, setStore,
+    category, setCategory, amount, setAmount, notes, setNotes,
+    receiptUrl, setReceiptUrl, isSubmitting,
+    editingId, resetForm, handleSubmit,
+    editPasswordModal, setEditPasswordModal, editPasswordInput, setEditPasswordInput,
+    editReason, setEditReason, handleEditClick, confirmEditPassword, closeEditPasswordModal, cancelEditPassword,
+    deleteModal, setDeleteModal, deletePasswordInput, setDeletePasswordInput,
+    deleteReason, setDeleteReason, handleDeleteClick, proceedToDeletePassword,
+    confirmDeletePassword, closeDeleteModal, cancelDelete,
+  } = useExpenseEditor({
+    sessionUser,
+    settingsEmployeeName: settings.employeeName,
+    expenses,
+    actions: editorActions,
+    showToast,
+    revealSavedExpense,
+    onNeedEmployeeName,
+    onEditLoaded,
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Evita sobrescrever o localStorage com settings padrão antes do carregamento
-  // (um JSON corrompido seria destruído silenciosamente pelo efeito de save).
-  const settingsLoadedRef = useRef(false);
-
-  // Load settings from localStorage
-  useEffect(() => {
-    const savedSet = localStorage.getItem('odoo_fast_settings');
-    if (savedSet) {
-      try {
-        const parsed = JSON.parse(savedSet);
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          parsed.categories = CATEGORIES_LIST.map(cat => ({ label: cat, odooRef: cat }));
-          if (sessionUser && (!parsed.employeeName || parsed.employeeName === "Seu Nome")) {
-            parsed.employeeName = sessionUser.name;
-          }
-          setSettings(parsed);
-        }
-      } catch (e) {
-        // Preserva o valor corrompido em cópia de segurança antes de qualquer save
-        console.warn("Erro ao parsear settings:", e);
-        try {
-          localStorage.setItem('odoo_fast_settings_corrupt_backup', savedSet);
-        } catch { /* storage cheio — ignora */ }
-      }
-    } else if (sessionUser) {
-      setSettings(prev => ({ ...prev, employeeName: sessionUser.name }));
-    }
-    settingsLoadedRef.current = true;
-  }, [sessionUser]);
-
-  // Save settings to localStorage (pula a 1ª execução — só persiste após o load)
-  useEffect(() => {
-    if (!settingsLoadedRef.current) return;
-    localStorage.setItem('odoo_fast_settings', JSON.stringify(settings));
-  }, [settings]);
-
-  // Sync session user name with employee settings
-  useEffect(() => {
-    if (sessionUser && (settings.employeeName === "Seu Nome" || !settings.employeeName)) {
-      setSettings(prev => ({ ...prev, employeeName: sessionUser.name }));
-    }
-  }, [sessionUser, settings.employeeName]);
-
-  // Check pending payments (Calendário - a cada 15 minutos com hey_listen.mp3)
-  //
-  // O efeito depende de `checks` e `fixedPayments` para RECALCULAR quando os
-  // dados chegam do Firestore ou quando o usuário paga uma conta — antes ele
-  // só rodava a cada 15min e o alerta podia exibir um snapshot obsoleto
-  // (ex.: "45 pendentes" calculado antes do sync, com tudo já em dia).
-  // A lista de chaves anteriores garante que:
-  //   - fechar o alerta não é desfeito por recálculos (sem mudança → nada);
-  //   - pagar contas (remoções) NÃO reabre nem bipa de novo;
-  //   - uma NOVA pendência (adição) reabre e bipa.
-  const prevPendingKeysRef = useRef<string[]>([]);
-  const pendingFirstRunRef = useRef(true);
-  const pendingKeyOf = (p: { day?: number; description?: string }) => `${p.day}§${p.description}`;
-
-  useEffect(() => {
-    if (!sessionUser) return;
-
-    const checkPending = () => {
-      const pending = getPendingPayments(fixedPayments);
-      const keys = pending.map(pendingKeyOf);
-
-      if (pending.length === 0) {
-        // Tudo em dia → esconde e reseta o histórico (nova pendência futura reabre)
-        prevPendingKeysRef.current = [];
-        setPendingItems([]);
-        setShowReminder(false);
-        return;
-      }
-
-      const prevKeys = prevPendingKeysRef.current;
-      const changed = keys.join('||') !== prevKeys.join('||');
-      if (!changed) return; // mesmo conteúdo → não re-render, não reabre, não bipa
-
-      const prevSet = new Set(prevKeys);
-      const hasNew = keys.some(k => !prevSet.has(k)); // adição real (nova pendência)
-      prevPendingKeysRef.current = keys;
-      setPendingItems(pending); // sempre atualizado (remove as pagas)
-
-      if (hasNew) {
-        setShowReminder(true);
-        playCalendarAlertSound();
-      }
-    };
-
-    // 1ª execução com delay curto (evita som logo no boot); recálculos
-    // disparados por mudança de dados rodam imediatamente.
-    const delay = pendingFirstRunRef.current ? 2000 : 0;
-    pendingFirstRunRef.current = false;
-    const timer = setTimeout(checkPending, delay);
-    const interval = setInterval(checkPending, 15 * 60 * 1000); // reda periódica
-    return () => {
-      clearTimeout(timer);
-      clearInterval(interval);
-    };
-  }, [sessionUser, checks, fixedPayments, getPendingPayments]);
-
-  // Check pending To-Do tasks (Tarefas - a cada 30 minutos com todo.mp3, intercalado aos 5 minutos)
-  const todosRef = useRef(todos);
-  useEffect(() => { todosRef.current = todos; }, [todos]);
-
-  useEffect(() => {
-    if (!sessionUser) return;
-
-    const checkPendingTodos = () => {
-      const todayStr = getTodayLocal();
-      // Somente tarefas COM data (hoje ou atrasadas) disparam o alerta —
-      // tarefas sem dueDate bipariam para sempre.
-      const pending = todosRef.current.filter(
-        t => !t.completed && t.dueDate && t.dueDate <= todayStr
-      );
-      if (pending.length > 0) {
-        playTodoAlertSound();
-      }
-    };
-
-    // Inicia aos 5 minutos (para intercalar com o calendário) e depois repete a cada 30 minutos
-    let interval: ReturnType<typeof setInterval> | undefined;
-    const initialOffsetTimer = setTimeout(() => {
-      checkPendingTodos();
-      interval = setInterval(checkPendingTodos, 30 * 60 * 1000); // a cada 30 minutos
-    }, 5 * 60 * 1000); // 5 minutos de offset para nunca coincidir
-
-    return () => {
-      clearTimeout(initialOffsetTimer);
-      if (interval) clearInterval(interval);
-    };
-  }, [sessionUser]);
-
-  // Flashing title for pending payments
-  useEffect(() => {
-    if (!sessionUser) return;
-    let titleInterval: ReturnType<typeof setInterval> | undefined;
-    if (showReminder && pendingItems.length > 0) {
-      let isAlert = true;
-      titleInterval = setInterval(() => {
-        document.title = isAlert ? `(${pendingItems.length}) 🔴 PAGAR AGORA!` : "🔔 Atenção - Despesas";
-        isAlert = !isAlert;
-      }, 1000);
-    } else {
-      document.title = "Relatório de Despesas Miplace";
-    }
-
-    return () => {
-      clearInterval(titleInterval);
-      document.title = "Relatório de Despesas Miplace";
-    };
-  }, [showReminder, pendingItems.length, sessionUser]);
-
-  // Available dates and months
-  const availableDates = useMemo(() => {
-    const dates = [...new Set(expenses.map(e => e.date))];
-    return dates.sort((a, b) => a.localeCompare(b));
-  }, [expenses]);
-
-  const availableMonths = useMemo(() => {
-    const months = [...new Set(expenses.map(e => e.date.substring(0, 7)))];
-    return months.sort((a, b) => a.localeCompare(b));
-  }, [expenses]);
-
-  // Auto-select date/month
-  useEffect(() => {
-    if (availableDates.length > 0 && (!selectedDate || !availableDates.includes(selectedDate))) {
-      setSelectedDate(availableDates[availableDates.length - 1]);
-    }
-  }, [availableDates, selectedDate]);
-
-  useEffect(() => {
-    if (availableMonths.length > 0 && (!selectedMonth || !availableMonths.includes(selectedMonth))) {
-      setSelectedMonth(availableMonths[availableMonths.length - 1]);
-    }
-  }, [availableMonths, selectedMonth]);
-
-  // Após salvar, salta o filtro para a data/mês do lançamento — senão a
-  // despesa recém-salva não aparece na lista (dia anterior ainda selecionado).
-  const revealSavedExpense = useCallback((savedDate: string) => {
-    setSelectedDate(savedDate);
-    setSelectedMonth(savedDate.substring(0, 7));
-  }, []);
-
-  // Filter expenses
-  const filteredExpenses = useMemo(() => {
-    let filtered = expenses;
-
-    if (searchTerm) {
-      const normalize = (str: string) => str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const lowerSearch = normalize(searchTerm);
-      return filtered.filter(ex =>
-        normalize(ex.description).includes(lowerSearch) ||
-        normalize(ex.category).includes(lowerSearch) ||
-        normalize(ex.store).includes(lowerSearch) ||
-        normalize(ex.employeeName || '').includes(lowerSearch) ||
-        (ex.notes && normalize(ex.notes).includes(lowerSearch))
-      );
-    }
-
-    if (filterMode === 'month' && selectedMonth) {
-      filtered = filtered.filter(ex => ex.date.startsWith(selectedMonth));
-    } else if (filterMode === 'day' && selectedDate) {
-      filtered = filtered.filter(ex => ex.date === selectedDate);
-    }
-
-    return filtered;
-  }, [expenses, searchTerm, selectedDate, selectedMonth, filterMode]);
-
-  // Handle column sort toggle
-  const handleSort = useCallback((field: SortField) => {
-    if (sortField === field) {
-      setSortOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setSortField(field);
-      setSortOrder('asc');
-    }
-  }, [sortField]);
-
-  // Group and sort expenses
-  const groupedExpenses = useMemo(() => {
-    const groups: Record<string, Expense[]> = {};
-    filteredExpenses.forEach(ex => {
-      const key = groupBy === 'date' ? ex.date : ex.store;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(ex);
-    });
-
-    const sortedKeys = Object.keys(groups).sort((a, b) => {
-      if (groupBy === 'date') return b.localeCompare(a);
-      return getStoreOrder(a) - getStoreOrder(b);
-    });
-
-    return sortedKeys.map(key => {
-      const sortedItems = [...groups[key]].sort((a, b) => {
-        let cmp = 0;
-        if (sortField === 'amount') {
-          cmp = a.amount - b.amount;
-        } else if (sortField === 'store') {
-          cmp = (getStoreOrder(a.store) - getStoreOrder(b.store)) || a.store.localeCompare(b.store);
-        } else if (sortField === 'category') {
-          cmp = a.category.localeCompare(b.category);
-        } else if (sortField === 'date') {
-          cmp = a.date.localeCompare(b.date);
-        } else if (sortField === 'description') {
-          cmp = a.description.localeCompare(b.description);
-        } else if (sortField === 'employeeName') {
-          cmp = (a.employeeName || '').localeCompare(b.employeeName || '');
-        }
-
-        if (cmp !== 0) return sortOrder === 'asc' ? cmp : -cmp;
-        return a.description.localeCompare(b.description);
-      });
-
-      return {
-        key,
-        items: sortedItems,
-        total: sortedItems.reduce((sum, item) => sum + item.amount, 0)
-      };
-    });
-  }, [filteredExpenses, groupBy, sortField, sortOrder]);
-
-  // Totals by store
-  const totalsByStore = useMemo(() => {
-    const acc: Record<string, number> = {};
-    filteredExpenses.forEach(ex => {
-      acc[ex.store] = (acc[ex.store] || 0) + ex.amount;
-    });
-    return acc;
-  }, [filteredExpenses]);
-
-  const totalGeneral = useMemo(() =>
-    filteredExpenses.reduce((sum, ex) => sum + ex.amount, 0),
-    [filteredExpenses]
-  );
 
   // User initials for sidebar avatar
   const userInitials = useMemo(() => {
@@ -433,29 +158,25 @@ export default function App() {
     setSessionUser(user);
     setSettings(prev => ({ ...prev, employeeName: user.name }));
     showToast(`Bem-vindo, ${user.name}!`, 'success');
-  }, [showToast]);
+  }, [setSettings, showToast]);
+
+  // Sessão do Firebase expirou/foi revogada (ou o app abriu sem sessão válida,
+  // ex.: restos de um login anônimo antigo): volta para a tela de login.
+  useEffect(() => {
+    // `firebaseAuth.currentUser` evita deslogar no instante entre o login
+    // concluir e o estado do hook propagar.
+    if (authReady && !user && sessionUser && (!firebaseAuth.currentUser || firebaseAuth.currentUser.isAnonymous)) {
+      void logoutUser();
+      setSessionUser(null);
+    }
+  }, [authReady, user, sessionUser]);
 
   // Handle Logout
   const handleLogout = useCallback(() => {
-    logoutUser();
+    void logoutUser();
     setSessionUser(null);
     showToast('Sessão encerrada com sucesso.', 'info');
   }, [showToast]);
-
-  // Form handlers
-  const resetForm = useCallback(() => {
-    setDate(getTodayLocal());
-    setDescription('');
-    setStore('');
-    setCategory('');
-    setAmount('');
-    setNotes('');
-    setReceiptUrl(undefined);
-    setEditingId(null);
-    setEditReason('');
-    originalExpenseForAudit.current = null;
-    editingGroupSiblings.current = [];
-  }, []);
 
   // Reset all states and return to Home dashboard
   const handleResetAllToHome = useCallback(() => {
@@ -472,7 +193,7 @@ export default function App() {
     setCurrentView('dashboard');
     window.scrollTo({ top: 0, behavior: 'smooth' });
     showToast("Retornado ao início do painel!", "info");
-  }, [resetForm, availableDates, availableMonths, showToast]);
+  }, [resetForm, setSearchTerm, setEditPasswordModal, setDeleteModal, setSelectedDate, setSelectedMonth, availableDates, availableMonths, showToast]);
 
   // Contagem de tarefas pendentes do To-Do para "Hoje"
   const pendingTodosToday = useMemo(() => {
@@ -484,14 +205,8 @@ export default function App() {
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (editPasswordModal.open) {
-          setEditPasswordModal({ open: false, expense: null });
-          setEditPasswordInput('');
-        }
-        if (deleteModal.open) {
-          setDeleteModal({ open: false, step: 'confirm', expense: null });
-          setDeletePasswordInput('');
-        }
+        if (editPasswordModal.open) closeEditPasswordModal();
+        if (deleteModal.open) closeDeleteModal();
         if (isSettingsOpen) setIsSettingsOpen(false);
         if (showBackupOptions) setShowBackupOptions(false);
         if (showPrintPreview) setShowPrintPreview(false);
@@ -499,337 +214,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [editPasswordModal.open, deleteModal.open, isSettingsOpen, showBackupOptions, showPrintPreview]);
-
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isSubmitting) return;
-
-    const activeEmployeeName = sessionUser?.name || settings.employeeName;
-    if (activeEmployeeName === "Seu Nome" || !activeEmployeeName.trim()) {
-      showToast("Configure seu nome antes de lançar.", "error");
-      setIsSettingsOpen(true);
-      return;
-    }
-
-    const totalVal = parseFloat(amount.replace(/\./g, '').replace(',', '.'));
-    if (isNaN(totalVal) || totalVal <= 0) {
-      showToast("Valor inválido", "error");
-      return;
-    }
-
-    setIsSubmitting(true);
-    // Rastreia operações concluídas para diagnosticar falha parcial
-    // (grupo editado sem transação — se falhar no meio, informar ao usuário).
-    let opsCompleted = 0;
-    try {
-      if (editingId) {
-        const prev = originalExpenseForAudit.current;
-        const isTargetGroup = isGroupStore(store);
-
-        if (isTargetGroup) {
-          // Lançamento consolidado por Grupo de Lojas (Todas, Piracicaba, Amparo)
-          const entries = splitExpense(store as any, totalVal);
-          const targetStores = entries.map(e => e.s);
-
-          // Irmãos prévios do grupo
-          const existingSiblings = editingGroupSiblings.current.length > 0
-            ? editingGroupSiblings.current
-            : [prev || expenses.find(e => e.id === editingId)!].filter(Boolean);
-
-          for (const ent of entries) {
-            const matchingSibling = existingSiblings.find(s => s.store === ent.s);
-            if (matchingSibling) {
-              await updateExpense(matchingSibling.id, {
-                date,
-                description,
-                store: ent.s,
-                category,
-                amount: ent.v,
-                notes,
-                employeeName: activeEmployeeName,
-                originalTotal: totalVal,
-                receiptUrl: receiptUrl || undefined,
-                editReason: editReason || undefined
-              });
-              opsCompleted++;
-            } else {
-              // Nova loja para o grupo (ex: mudou de 3 para 5 lojas)
-              await addExpense({
-                date,
-                description,
-                category,
-                notes,
-                store: ent.s,
-                amount: ent.v,
-                quantity: 1.0,
-                employeeName: activeEmployeeName,
-                originalTotal: totalVal,
-                receiptUrl: receiptUrl || undefined
-              });
-              opsCompleted++;
-            }
-          }
-
-          // Exclui lojas que deixaram de fazer parte do grupo
-          const removedSiblings = existingSiblings.filter(s => !targetStores.includes(s.store as any));
-          for (const rem of removedSiblings) {
-            await deleteExpense(rem.id, editReason || "Ajuste de lojas na edição do grupo", activeEmployeeName);
-            opsCompleted++;
-          }
-
-          // Auditoria (aguardada para não virar unhandled rejection)
-          if (prev) {
-            await logAuditEvent({
-              actionType: 'EDIT',
-              actionDate: new Date().toISOString(),
-              userName: sessionUser?.name || 'Administrador',
-              userEmail: sessionUser?.email || '',
-              expenseId: editingId,
-              reason: editReason || `Edição consolidada do grupo ${store}`,
-              previousData: {
-                description: prev.description,
-                store: prev.store,
-                category: prev.category,
-                amount: prev.amount,
-                date: prev.date,
-                notes: prev.notes,
-                employeeName: prev.employeeName,
-                receiptUrl: prev.receiptUrl
-              },
-              newData: {
-                description,
-                store,
-                category,
-                amount: totalVal,
-                date,
-                notes,
-                employeeName: activeEmployeeName,
-                receiptUrl: receiptUrl || undefined
-              }
-            });
-          }
-
-          showToast(`Lançamento e valores corrigidos para todas as ${entries.length} lojas do grupo ${store}!`, "success");
-          editingGroupSiblings.current = [];
-          revealSavedExpense(date);
-          resetForm();
-        } else {
-          // Lançamento individual para uma única loja
-          await updateExpense(editingId, {
-            date,
-            description,
-            store,
-            category,
-            amount: totalVal,
-            notes,
-            employeeName: activeEmployeeName,
-            originalTotal: null,
-            receiptUrl: receiptUrl || undefined,
-            editReason: editReason || undefined
-          });
-          opsCompleted++;
-
-          // Se anteriormente fazia parte de um grupo e foi alterado para loja individual, remover os outros irmãos
-          const otherSiblings = editingGroupSiblings.current.filter(s => s.id !== editingId);
-          for (const sib of otherSiblings) {
-            await deleteExpense(sib.id, editReason || "Desagrupamento na edição para loja individual", activeEmployeeName);
-            opsCompleted++;
-          }
-
-          if (prev) {
-            await logAuditEvent({
-              actionType: 'EDIT',
-              actionDate: new Date().toISOString(),
-              userName: sessionUser?.name || 'Administrador',
-              userEmail: sessionUser?.email || '',
-              expenseId: editingId,
-              reason: editReason || 'Edição de lançamento',
-              previousData: {
-                description: prev.description,
-                store: prev.store,
-                category: prev.category,
-                amount: prev.amount,
-                date: prev.date,
-                notes: prev.notes,
-                employeeName: prev.employeeName,
-                receiptUrl: prev.receiptUrl
-              },
-              newData: {
-                description,
-                store,
-                category,
-                amount: totalVal,
-                date,
-                notes,
-                employeeName: activeEmployeeName,
-                receiptUrl: receiptUrl || undefined
-              }
-            });
-          }
-
-          showToast("Lançamento atualizado e registrado na auditoria!");
-          editingGroupSiblings.current = [];
-          revealSavedExpense(date);
-          resetForm();
-        }
-      } else {
-        const entries = splitExpense(store as any, totalVal);
-
-        for (let ent of entries) {
-          const newDoc = {
-            date,
-            description,
-            category,
-            notes,
-            store: ent.s,
-            amount: ent.v,
-            quantity: 1.0,
-            employeeName: activeEmployeeName,
-            originalTotal: entries.length > 1 ? totalVal : null,
-            receiptUrl: receiptUrl || undefined
-          };
-          await addExpense(newDoc);
-          opsCompleted++;
-        }
-        showToast(entries.length > 1 ? `${entries.length} despesas geradas!` : "Despesa salva!");
-        revealSavedExpense(date);
-        resetForm();
-      }
-    } catch (error) {
-      console.error('Erro ao salvar despesa:', error);
-      if (opsCompleted > 0) {
-        // Falha parcial: parte do grupo foi gravada — usuário precisa conferir
-        showToast(`Erro após ${opsCompleted} operação(ões) concluída(s) — verifique os valores do lançamento.`, "error");
-      } else {
-        showToast("Erro ao salvar", "error");
-      }
-    } finally {
-      setIsSubmitting(false);
-    }
-  }, [isSubmitting, sessionUser, settings.employeeName, amount, date, description, store, category, notes, receiptUrl, editingId, editReason, updateExpense, addExpense, deleteExpense, expenses, resetForm, showToast, revealSavedExpense]);
-
-  // Handle Edit Click (Opens Edit Password Modal)
-  const handleEditClick = useCallback((ex: Expense) => {
-    setEditPasswordModal({ open: true, expense: ex });
-    setEditPasswordInput('');
-    setEditReason('');
-  }, []);
-
-  // Confirm Edit Password
-  const isEditConfirmingRef = useRef(false); // guarda anti duplo-submissão
-  const confirmEditPassword = useCallback(async () => {
-    if (isEditConfirmingRef.current) return;
-    isEditConfirmingRef.current = true;
-    try {
-      if (!(await validateAdminPassword(editPasswordInput))) {
-        showToast("Senha incorreta.", "error");
-        return;
-      }
-
-      if (editPasswordModal.expense) {
-        const ex = editPasswordModal.expense;
-        originalExpenseForAudit.current = ex;
-
-        // Detecta se a despesa pertence a um grupo rateado (Todas, Piracicaba, Amparo)
-        const groupInfo = detectExpenseGroup(ex, expenses);
-        editingGroupSiblings.current = groupInfo.siblings;
-
-        setEditingId(ex.id);
-        setDate(ex.date);
-        setDescription(ex.description);
-        setStore(groupInfo.isGroup && groupInfo.groupName ? groupInfo.groupName : ex.store);
-        setCategory(ex.category);
-        // Só carrega o total do grupo quando a loja carregada É o grupo;
-        // caso contrário (groupName null com originalTotal), usar o valor
-        // individual — senão salvar gravaria o total inteiro em 1 loja.
-        setAmount(formatCurrency(groupInfo.isGroup && groupInfo.groupName ? groupInfo.totalAmount : ex.amount));
-        setNotes(ex.notes || '');
-        setReceiptUrl(ex.receiptUrl || undefined);
-        setEditPasswordModal({ open: false, expense: null });
-        setEditPasswordInput('');
-        setCurrentView('dashboard');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        showToast(
-          groupInfo.isGroup && groupInfo.groupName
-            ? `Modo de edição: grupo ${groupInfo.groupName} carregado com valor total!`
-            : "Modo de edição liberado!",
-          "info"
-        );
-      }
-    } finally {
-      isEditConfirmingRef.current = false;
-    }
-  }, [editPasswordInput, editPasswordModal.expense, expenses, showToast]);
-
-  // Handle Delete Click (Opens Delete Step 1: Confirmation)
-  const handleDeleteClick = useCallback((ex: Expense) => {
-    setDeleteModal({ open: true, step: 'confirm', expense: ex });
-    setDeletePasswordInput('');
-    setDeleteReason('');
-  }, []);
-
-  // Delete Step 1 -> Proceed to Step 2 (Password)
-  const proceedToDeletePassword = useCallback(() => {
-    if (!deleteReason.trim()) {
-      showToast("Informe o motivo da exclusão antes de continuar.", "error");
-      return;
-    }
-    setDeleteModal(prev => ({ ...prev, step: 'password' }));
-  }, [deleteReason, showToast]);
-
-  // Confirm Delete Password & Log Audit (Soft Delete)
-  const isDeletingRef = useRef(false); // guarda anti duplo-submissão
-  const confirmDeletePassword = useCallback(async () => {
-    if (isDeletingRef.current) return; // clique duplo não exclui 2x nem duplica auditoria
-    if (!(await validateAdminPassword(deletePasswordInput))) {
-      showToast("Senha incorreta.", "error");
-      return;
-    }
-
-    if (deleteModal.expense) {
-      const ex = deleteModal.expense;
-      const { allowed, reason } = canDelete(ex.id);
-      if (!allowed) {
-        showToast(reason || "Exclusão não permitida", "error");
-        return;
-      }
-
-      isDeletingRef.current = true;
-      try {
-        await deleteExpense(ex.id, deleteReason, sessionUser?.name || 'Administrador');
-
-        // Grava auditoria de exclusão com motivo (aguardada — toast só se confirmou)
-        await logAuditEvent({
-          actionType: 'DELETE',
-          actionDate: new Date().toISOString(),
-          userName: sessionUser?.name || 'Administrador',
-          userEmail: sessionUser?.email || '',
-          expenseId: ex.id,
-          reason: deleteReason,
-          previousData: {
-            description: ex.description,
-            store: ex.store,
-            category: ex.category,
-            amount: ex.amount,
-            date: ex.date,
-            notes: ex.notes,
-            employeeName: ex.employeeName,
-            receiptUrl: ex.receiptUrl
-          }
-        });
-
-        setDeleteModal({ open: false, step: 'confirm', expense: null });
-        setDeletePasswordInput('');
-        setDeleteReason('');
-        showToast("Lançamento excluído e registrado na auditoria!", "success");
-      } catch (error) {
-        showToast("Erro ao excluir lançamento. Tente novamente.", "error");
-      } finally {
-        isDeletingRef.current = false;
-      }
-    }
-  }, [deletePasswordInput, deleteModal.expense, deleteReason, canDelete, deleteExpense, sessionUser, showToast]);
+  }, [editPasswordModal.open, deleteModal.open, closeEditPasswordModal, closeDeleteModal, isSettingsOpen, showBackupOptions, showPrintPreview]);
 
   const handleRestore = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -839,6 +224,7 @@ export default function App() {
       await handleRestoreFile(file, (msg) => showToast(msg));
       showToast("Backup restaurado com sucesso!");
     } catch (error) {
+      console.error('Erro ao restaurar backup:', error);
       showToast("Erro ao restaurar backup", "error");
     } finally {
       // Permite selecionar o MESMO arquivo novamente (senão o onChange não dispara)
@@ -870,11 +256,7 @@ export default function App() {
 
   const handleSavePDF = useCallback(async () => {
     const defaultFileName = `relatorio-despesas-${selectedDate || selectedMonth || getTodayLocal()}.pdf`;
-    const periodLabel = searchTerm
-      ? `Busca: "${searchTerm}"`
-      : filterMode === 'month'
-      ? `Mês: ${formatMonthBR(selectedMonth)}`
-      : `Dia: ${formatDateBR(selectedDate)}`;
+    const periodLabel = pdfPeriodLabel;
 
     const currentSettings = {
       ...settings,
@@ -890,17 +272,15 @@ export default function App() {
         showToast("Erro ao baixar PDF: " + (res.error || "Desconhecido"), "error");
       }
     } else {
+      // jsPDF só é baixado quando o usuário exporta (fora do bundle inicial)
+      const { exportVectorPDF } = await import('@/shared/utils/pdfExport');
       exportVectorPDF(filteredExpenses, currentSettings, periodLabel, defaultFileName);
       showToast("PDF vetorial baixado com sucesso!", "success");
     }
-  }, [selectedDate, selectedMonth, searchTerm, filterMode, filteredExpenses, settings, sessionUser, showToast]);
+  }, [selectedDate, selectedMonth, pdfPeriodLabel, filteredExpenses, settings, sessionUser, showToast]);
 
   const handleOpenNewTabPDF = useCallback(async () => {
-    const periodLabel = searchTerm
-      ? `Busca: "${searchTerm}"`
-      : filterMode === 'month'
-      ? `Mês: ${formatMonthBR(selectedMonth)}`
-      : `Dia: ${formatDateBR(selectedDate)}`;
+    const periodLabel = pdfPeriodLabel;
 
     const currentSettings = {
       ...settings,
@@ -916,10 +296,11 @@ export default function App() {
         showToast("Erro ao abrir PDF: " + (res.error || "Desconhecido"), "error");
       }
     } else {
+      const { openVectorPDFInNewTab } = await import('@/shared/utils/pdfExport');
       openVectorPDFInNewTab(filteredExpenses, currentSettings, periodLabel);
       showToast("PDF vetorial aberto em nova guia!", "success");
     }
-  }, [selectedDate, selectedMonth, searchTerm, filterMode, filteredExpenses, settings, sessionUser, showToast]);
+  }, [pdfPeriodLabel, filteredExpenses, settings, sessionUser, showToast]);
 
   const handlePrintDirect = useCallback(() => {
     window.print();
@@ -940,14 +321,6 @@ export default function App() {
       <ArrowDown className="w-3 h-3 text-amber-600" />
     );
   };
-
-  // Current period label matching reference design
-  const currentPeriodLabel = useMemo(() => {
-    if (searchTerm) return `Busca: "${searchTerm}"`;
-    if (filterMode === 'month' && selectedMonth) return formatMonthBR(selectedMonth);
-    if (filterMode === 'day' && selectedDate) return formatDateBR(selectedDate);
-    return "Consolidado";
-  }, [searchTerm, filterMode, selectedMonth, selectedDate]);
 
   // If user is not authenticated, render Login Screen
   if (!sessionUser) {
@@ -986,217 +359,23 @@ export default function App() {
       {/* Hidden file input for backup restoration */}
       <input type="file" ref={fileInputRef} onChange={handleRestore} accept=".json" className="hidden" />
 
-      {/* Mobile Top Navigation Bar */}
-      <div className="lg:hidden flex items-center justify-between p-4 bg-[#111215] text-white border-b border-zinc-800 sticky top-0 z-50 no-print">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-amber-400 text-slate-950 font-extrabold flex items-center justify-center text-xs tracking-tighter">
-            MI
-          </div>
-          <div>
-            <h1 className="text-sm font-bold tracking-tight text-white leading-none">Miplace Despesas</h1>
-            <span className="text-[9px] text-slate-400 uppercase tracking-widest">Enterprise Dashboard</span>
-          </div>
-        </div>
-        <button
-          onClick={() => setMobileMenuOpen(prev => !prev)}
-          className="p-2 rounded-lg bg-white/10 text-slate-300 hover:text-white cursor-pointer"
-          aria-label="Abrir Menu"
-        >
-          {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
-      </div>
-
-      {/* Dark Sidebar Navigation (Matches Reference Image) */}
-      <aside
-        className={`
-          fixed lg:sticky top-0 left-0 z-50 lg:z-30 w-64 h-screen bg-[#111215] text-slate-300 border-r border-zinc-900
-          flex flex-col justify-between p-5 shrink-0 transition-transform duration-300 no-print shadow-xl
-          ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-        `}
-      >
-        <div>
-          {/* Logo Header (Reference Image Style) */}
-          <div className="flex items-center gap-3 pb-6 border-b border-white/10">
-            <div className="w-10 h-10 rounded-full bg-amber-400 text-slate-950 font-extrabold flex flex-col items-center justify-center leading-none shadow-md shrink-0">
-              <span className="text-[11px] font-black tracking-tight">MI</span>
-              <span className="text-[7px] font-bold tracking-tighter -mt-0.5">PLACE</span>
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-sm font-bold text-white tracking-tight leading-tight truncate">Miplace Despesas</h1>
-              <span className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold block">Enterprise</span>
-              <span className="text-[8px] text-slate-500 uppercase tracking-widest block -mt-0.5">Dashboard</span>
-            </div>
-          </div>
-
-          {/* Nav Links */}
-          <nav className="mt-6 space-y-1">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 px-3">Principal</p>
-            
-            <button
-              onClick={() => { setCurrentView('dashboard'); setMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
-                currentView === 'dashboard'
-                  ? 'bg-white/10 text-white font-semibold shadow-sm border border-white/10'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Home className="w-4 h-4 text-amber-400" />
-              <span>Visão Geral</span>
-            </button>
-
-            <button
-              onClick={() => { setCurrentView('calendar'); setMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
-                currentView === 'calendar'
-                  ? 'bg-white/10 text-white font-semibold shadow-sm border border-white/10'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <Calendar className="w-4 h-4 text-cyan-400" />
-              <span>Calendário</span>
-            </button>
-
-            <button
-              onClick={() => { setCurrentView('analytics'); setMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
-                currentView === 'analytics'
-                  ? 'bg-white/10 text-white font-semibold shadow-sm border border-white/10'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <BarChart2 className="w-4 h-4 text-purple-400" />
-              <span>Categorias & Mix</span>
-            </button>
-
-            <button
-              onClick={() => { setCurrentView('closing'); setMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
-                currentView === 'closing'
-                  ? 'bg-white/10 text-white font-semibold shadow-sm border border-white/10'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <FileText className="w-4 h-4 text-rose-400" />
-              <span>Fechamento Mensal</span>
-            </button>
-
-            <button
-              onClick={() => { setCurrentView('payments'); setMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
-                currentView === 'payments'
-                  ? 'bg-white/10 text-white font-semibold shadow-sm border border-white/10'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <CheckSquare className="w-4 h-4 text-emerald-400" />
-              <span>Pagamentos Fixos</span>
-            </button>
-
-            <button
-              onClick={() => { setCurrentView('todo'); setMobileMenuOpen(false); }}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
-                currentView === 'todo'
-                  ? 'bg-white/10 text-white font-semibold shadow-sm border border-white/10'
-                  : 'text-slate-400 hover:text-white hover:bg-white/5'
-              }`}
-            >
-              <ListTodo className="w-4 h-4 text-amber-400" />
-              <span>Tarefas & To-Do</span>
-              {pendingTodosToday > 0 && (
-                <span className="ml-auto text-[10px] font-bold bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded-full">
-                  {pendingTodosToday}
-                </span>
-              )}
-            </button>
-
-            {/* Relatorios & Tools */}
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-2 pt-6 px-3">
-              Relatórios & Nuvem
-            </p>
-
-            <button
-              onClick={handlePrint}
-              className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
-            >
-              <Printer className="w-4 h-4 text-slate-400" />
-              <span>Exportar PDF</span>
-            </button>
-
-            <button
-              onClick={() => { setShowBackupOptions(true); setMobileMenuOpen(false); }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
-            >
-              <HardDrive className="w-4 h-4 text-slate-400" />
-              <span>Backup & Nuvem</span>
-            </button>
-
-            {/* Aba Exclusiva "Registros" para o Administrador Dark Morellato */}
-            {isDarkAdmin && (
-              <button
-                onClick={() => { setCurrentView('audit'); setMobileMenuOpen(false); }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-all cursor-pointer ${
-                  currentView === 'audit'
-                    ? 'bg-white/10 text-white font-semibold shadow-sm border border-white/10'
-                    : 'text-slate-400 hover:text-white hover:bg-white/5'
-                }`}
-              >
-                <History className="w-4 h-4 text-amber-400" />
-                <span>Registros</span>
-                <span className="ml-auto text-[9px] font-bold bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded">
-                  Admin
-                </span>
-              </button>
-            )}
-
-            <button
-              onClick={() => { setIsSettingsOpen(true); setMobileMenuOpen(false); }}
-              className="w-full flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg text-slate-400 hover:text-white hover:bg-white/5 transition-all cursor-pointer"
-            >
-              <Settings className="w-4 h-4 text-slate-400" />
-              <span>Configurações</span>
-            </button>
-          </nav>
-        </div>
-
-        {/* User Profile Footer with Logout */}
-        <div className="pt-4 border-t border-white/10 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-            <div className="w-9 h-9 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-xs font-bold text-amber-400 shrink-0">
-              {userInitials}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="text-[10px] text-slate-400 uppercase font-semibold truncate tracking-wider">
-                {sessionUser?.role || "Administrador"}
-              </p>
-              <p className="text-sm font-medium text-slate-200 truncate">
-                {sessionUser?.name || settings.employeeName}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            {syncStatus === 'synced' && <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block shadow-[0_0_6px_rgba(52,211,153,0.8)]" title="Online" />}
-            {syncStatus === 'syncing' && <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse inline-block" title="Sincronizando..." />}
-            {syncStatus === 'error' && <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" title="Erro" />}
-            
-            <button
-              onClick={handleLogout}
-              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-white/5 rounded-lg transition-colors cursor-pointer ml-1"
-              title="Sair / Trocar Usuário"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      {/* Backdrop for mobile drawer */}
-      {mobileMenuOpen && (
-        <div
-          onClick={() => setMobileMenuOpen(false)}
-          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
-        />
-      )}
+      <AppSidebar
+        currentView={currentView}
+        onNavigate={setCurrentView}
+        mobileMenuOpen={mobileMenuOpen}
+        onToggleMobileMenu={() => setMobileMenuOpen(prev => !prev)}
+        onCloseMobileMenu={() => setMobileMenuOpen(false)}
+        pendingTodosToday={pendingTodosToday}
+        isAdmin={isDarkAdmin}
+        onPrint={handlePrint}
+        onOpenBackup={() => setShowBackupOptions(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onLogout={handleLogout}
+        userInitials={userInitials}
+        userRole={sessionUser?.role || 'Administrador'}
+        userName={sessionUser?.name || settings.employeeName}
+        syncStatus={syncStatus}
+      />
 
       {/* Main Light Clean Canvas (Matches Reference Image) */}
       <main className="flex-1 flex flex-col min-w-0 overflow-y-auto">
@@ -1607,182 +786,27 @@ export default function App() {
         </div>
       </main>
 
-      {/* Edit Password Confirmation Modal */}
-      {editPasswordModal.open && editPasswordModal.expense && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in no-print"
-          onClick={() => { setEditPasswordModal({ open: false, expense: null }); setEditPasswordInput(''); setEditReason(''); }}
-        >
-          <div
-            className="bg-white border border-slate-200 w-full max-w-sm rounded-2xl p-6 text-center shadow-2xl"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="mx-auto w-12 h-12 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-center mb-4 text-amber-600">
-              <Edit className="w-6 h-6" />
-            </div>
-            <h3 className="text-lg font-bold text-slate-900 mb-1">Confirmar Edição</h3>
-            <p className="text-xs text-slate-600 mb-1 font-bold">
-              {editPasswordModal.expense.description}
-            </p>
-            <p className="text-[11px] text-slate-400 mb-4">
-              Digite a senha de administrador para liberar a edição deste item.
-            </p>
+      <EditPasswordModal
+        expense={editPasswordModal.open ? editPasswordModal.expense : null}
+        reason={editReason}
+        onReasonChange={setEditReason}
+        password={editPasswordInput}
+        onPasswordChange={setEditPasswordInput}
+        onConfirm={confirmEditPassword}
+        onCancel={cancelEditPassword}
+      />
 
-            <div className="mb-3.5 text-left space-y-1">
-              <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
-                Motivo da Edição (Opcional)
-              </label>
-              <input
-                type="text"
-                placeholder="Ex: Correção de valor de nota fiscal..."
-                value={editReason}
-                onChange={e => setEditReason(e.target.value)}
-                className="liquid-input w-full px-3 py-2 rounded-lg text-xs text-slate-900 font-medium"
-              />
-            </div>
-
-            <input
-              type="password"
-              autoFocus
-              placeholder="Senha de Administrador"
-              value={editPasswordInput}
-              onChange={e => setEditPasswordInput(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter') confirmEditPassword();
-                if (e.key === 'Escape') { setEditPasswordModal({ open: false, expense: null }); setEditPasswordInput(''); setEditReason(''); }
-              }}
-              className="liquid-input w-full px-4 py-2.5 rounded-lg text-center font-bold text-slate-900 mb-5 placeholder-slate-400 text-sm"
-            />
-            <div className="flex gap-2.5">
-              <button
-                type="button"
-                onClick={() => { setEditPasswordModal({ open: false, expense: null }); setEditPasswordInput(''); setEditReason(''); }}
-                className="flex-1 py-2.5 bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-200 transition-all cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={confirmEditPassword}
-                className="flex-1 py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold text-xs rounded-lg shadow-sm transition-all cursor-pointer"
-              >
-                Liberar Edição
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Delete 2-Step Modal (Step 1: Confirm & Reason -> Step 2: Password) */}
-      {deleteModal.open && deleteModal.expense && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in no-print"
-          onClick={() => { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); setDeleteReason(''); }}
-        >
-          <div
-            className="bg-white border border-slate-200 w-full max-w-md rounded-2xl p-6 text-center shadow-2xl"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="mx-auto w-12 h-12 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-center mb-4 text-rose-600">
-              <Trash2 className="w-6 h-6" />
-            </div>
-
-            {deleteModal.step === 'confirm' ? (
-              /* Passo 1: Confirmar intenção de excluir + Justificativa Obrigatória */
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 mb-1">Deseja realmente excluir?</h3>
-                <p className="text-xs text-slate-500 mb-4">
-                  Esta ação moverá o lançamento para a lixeira (soft-delete) e registrará o evento na auditoria.
-                </p>
-
-                {/* Detalhes do item a ser excluído */}
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-left mb-4 space-y-1.5 text-xs">
-                  <p><strong className="text-slate-900">Descrição:</strong> {deleteModal.expense.description}</p>
-                  <p><strong className="text-slate-900">Loja / Categoria:</strong> {deleteModal.expense.store} • {deleteModal.expense.category}</p>
-                  <p><strong className="text-slate-900">Data:</strong> {formatDateBR(deleteModal.expense.date)}</p>
-                  <p><strong className="text-slate-900">Valor:</strong> <span className="font-bold text-rose-700">R$ {formatCurrency(deleteModal.expense.amount)}</span></p>
-                </div>
-
-                {/* Justificativa Obrigatória */}
-                <div className="mb-5 text-left space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700 block uppercase tracking-wider">
-                    Motivo / Justificativa da Exclusão <span className="text-rose-500">*</span>
-                  </label>
-                  <textarea
-                    rows={2}
-                    required
-                    placeholder="Informe o motivo da exclusão para registro na auditoria..."
-                    value={deleteReason}
-                    onChange={e => setDeleteReason(e.target.value)}
-                    className="liquid-input w-full p-2.5 rounded-xl text-xs text-slate-900 font-medium placeholder-slate-400"
-                  />
-                </div>
-
-                <div className="flex gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); setDeleteReason(''); }}
-                    className="flex-1 py-2.5 bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-200 transition-all cursor-pointer"
-                  >
-                    Não, Manter
-                  </button>
-                  <button
-                    type="button"
-                    onClick={proceedToDeletePassword}
-                    className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg shadow-md shadow-rose-600/20 transition-all cursor-pointer"
-                  >
-                    Sim, Continuar
-                  </button>
-                </div>
-              </div>
-            ) : (
-              /* Passo 2: Solicitar senha de administrador */
-              <div>
-                <h3 className="text-lg font-bold text-slate-900 mb-1">Senha de Confirmação</h3>
-                <p className="text-xs text-slate-500 mb-3">
-                  Digite a senha de administrador para concluir a exclusão de <strong>{deleteModal.expense.description}</strong>.
-                </p>
-
-                {deleteReason && (
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-left mb-4 text-xs">
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Justificativa:</span>
-                    <span className="text-slate-800 font-semibold">{deleteReason}</span>
-                  </div>
-                )}
-
-                <input
-                  type="password"
-                  autoFocus
-                  placeholder="Senha"
-                  value={deletePasswordInput}
-                  onChange={e => setDeletePasswordInput(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') confirmDeletePassword();
-                    if (e.key === 'Escape') { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); setDeleteReason(''); }
-                  }}
-                  className="liquid-input w-full px-4 py-2.5 rounded-lg text-center font-bold text-slate-900 mb-5 placeholder-slate-400 text-sm"
-                />
-                <div className="flex gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => { setDeleteModal({ open: false, step: 'confirm', expense: null }); setDeletePasswordInput(''); setDeleteReason(''); }}
-                    className="flex-1 py-2.5 bg-slate-100 border border-slate-200 text-slate-700 font-semibold text-xs rounded-lg hover:bg-slate-200 transition-all cursor-pointer"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="button"
-                    onClick={confirmDeletePassword}
-                    className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg shadow-md shadow-rose-600/20 transition-all cursor-pointer"
-                  >
-                    Excluir Definitivamente
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <DeleteExpenseModal
+        expense={deleteModal.open ? deleteModal.expense : null}
+        step={deleteModal.step}
+        reason={deleteReason}
+        onReasonChange={setDeleteReason}
+        password={deletePasswordInput}
+        onPasswordChange={setDeletePasswordInput}
+        onProceed={proceedToDeletePassword}
+        onConfirm={confirmDeletePassword}
+        onCancel={cancelDelete}
+      />
 
       {/* Visualizador de Comprovante Anexado */}
       <ReceiptModal
@@ -1790,101 +814,20 @@ export default function App() {
         onClose={() => setViewReceiptExpense(null)}
       />
 
-      {/* Settings Modal */}
       {isSettingsOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs no-print">
-          <div className="bg-white border border-slate-200 w-full max-w-md overflow-hidden flex flex-col rounded-2xl shadow-2xl">
-            <div className="p-5 border-b border-slate-200 flex justify-between items-center bg-slate-50">
-              <h3 className="text-base font-bold text-slate-900 flex items-center gap-2.5">
-                <Settings className="w-5 h-5 text-amber-600" />
-                Configurações do Sistema
-              </h3>
-              <button
-                onClick={() => setIsSettingsOpen(false)}
-                className="text-slate-400 hover:text-slate-900 p-1 rounded-lg hover:bg-slate-200 transition-colors cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="p-6 space-y-6 overflow-y-auto">
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Perfil & Sincronização</h4>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                    Nome do Funcionário <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={settings.employeeName}
-                    onChange={e => setSettings({ ...settings, employeeName: e.target.value })}
-                    className="liquid-input w-full p-2.5 rounded-lg font-medium text-slate-900 text-sm"
-                  />
-                  <p className="text-[11px] text-slate-500 mt-1.5">
-                    Este nome é a chave da sua sincronização. Use o mesmo nome em todos os dispositivos.
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-3 pt-4 border-t border-slate-200">
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Backup Local</h4>
-                <button
-                  onClick={() => { if (fileInputRef.current) fileInputRef.current.click(); }}
-                  className="flex items-center justify-center gap-2 w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold transition-all cursor-pointer"
-                >
-                  <Upload className="w-4 h-4" /> Restaurar Arquivo do Computador
-                </button>
-              </div>
-            </div>
-            <div className="p-4 bg-slate-50 border-t border-slate-200">
-              <button
-                onClick={() => setIsSettingsOpen(false)}
-                className="w-full py-2.5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-950 font-bold text-xs rounded-lg transition-all cursor-pointer shadow-sm"
-              >
-                Concluir & Salvar
-              </button>
-            </div>
-          </div>
-        </div>
+        <SettingsModal
+          settings={settings}
+          onEmployeeNameChange={(name) => setSettings(prev => ({ ...prev, employeeName: name }))}
+          onRestoreClick={handleEmptyStateRestore}
+          onClose={() => setIsSettingsOpen(false)}
+        />
       )}
 
-      {/* Backup Modal */}
       {showBackupOptions && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in no-print">
-          <div className="bg-white border border-slate-200 w-full max-w-sm rounded-2xl shadow-2xl p-6 text-center">
-            <div className="mx-auto w-12 h-12 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-center mb-4 text-amber-600">
-              <Save className="w-6 h-6" />
-            </div>
-            <h3 className="text-lg font-bold text-slate-900 mb-1">Backup & Segurança</h3>
-            <p className="text-xs text-slate-500 mb-6">Opções de persistência e salvamento dos seus dados</p>
-            <div className="space-y-3">
-              <button
-                onClick={handleSaveBackup}
-                className="w-full py-3 px-4 bg-slate-50 border border-slate-200 hover:bg-slate-100 text-slate-800 font-semibold rounded-xl transition-all flex items-center justify-between text-xs cursor-pointer shadow-xs"
-              >
-                <div className="flex items-center gap-2.5">
-                  <HardDrive className="w-4 h-4 text-amber-600" />
-                  <span>Baixar Backup no Computador</span>
-                </div>
-                <Download className="w-3.5 h-3.5 text-slate-400" />
-              </button>
-
-              <div className="flex items-start gap-3 p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-left">
-                <Cloud className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs font-bold text-emerald-800">Sincronização em Nuvem Ativa</p>
-                  <p className="text-[11px] text-emerald-700 mt-0.5 leading-snug">
-                    Todos os lançamentos são salvos em tempo real no Firebase.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <button
-              onClick={() => setShowBackupOptions(false)}
-              className="mt-5 text-slate-400 hover:text-slate-700 text-xs font-semibold uppercase tracking-wider cursor-pointer"
-            >
-              Fechar
-            </button>
-          </div>
-        </div>
+        <BackupModal
+          onSave={handleSaveBackup}
+          onClose={() => setShowBackupOptions(false)}
+        />
       )}
 
       {/* Print Preview Modal */}

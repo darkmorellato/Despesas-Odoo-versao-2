@@ -88,19 +88,19 @@ export const useTodo = (employeeName: string, userEmail: string, enabled: boolea
   // Guarda de idempotência para toggleComplete (duplo clique)
   const toggleInFlight = useRef<Set<string>>(new Set());
 
-  // Aguarda o login anônimo do Firebase: as firestore.rules exigem
-  // request.auth != null — se assinarmos o listener antes, o Firestore nega
+  // Aguarda o login (e-mail/senha) do Firebase: as firestore.rules exigem uma
+  // conta da equipe — se assinarmos o listener antes, o Firestore nega
   // ("Missing or insufficient permissions") e o listener morre, deixando o
   // app preso no cache local (os outros hooks já esperavam o `user`).
   const [authReady, setAuthReady] = useState(false);
   useEffect(() => {
     if (!enabled) return;
-    if (auth.currentUser) {
+    if (auth.currentUser && !auth.currentUser.isAnonymous) {
       setAuthReady(true);
       return;
     }
     const unsub = onAuthStateChanged(auth, (u) => {
-      setAuthReady(!!u);
+      setAuthReady(!!u && !u.isAnonymous);
     });
     return () => unsub();
   }, [enabled]);

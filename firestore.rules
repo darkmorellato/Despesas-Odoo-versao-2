@@ -1,22 +1,26 @@
 // =============================================================================
 // Regras de segurança do Firestore — Despesas Miplace
 //
-// IMPORTANTE: as regras antigas NÃO estavam versionadas no repositório (ficavam
-// apenas no console do Firebase), o que tornava qualquer alteração invisível e
-// irreversível. Este arquivo passa a ser a fonte única de verdade — publique com:
+// Fonte única de verdade — publique com:
 //   firebase deploy --only firestore:rules
 //
-// Todos os caminhos abaixo foram conferidos nos fontes do app (grep por
-// collection( / doc(db ...)):
-//   - src/config/firebase.ts        -> getFirebaseRefs()
-//   - src/features/auth/services/authService.ts
-//   - src/features/todo/{hooks,services}
-//   - src/features/audit/{hooks,services}
+// MODELO DE ACESSO
+//   - O app usa Firebase Authentication com e-mail/senha (NÃO existe mais
+//     login anônimo). Um token anônimo — que qualquer pessoa com a apiKey
+//     pública consegue — NÃO acessa nada.
+//   - Só as contas da equipe (lista TEAM_EMAILS abaixo) leem/escrevem dados.
+//     A lista precisa ser mantida em sincronia com scripts/create_auth_users.mjs.
+//   - Operações sensíveis (criar/excluir usuários, trocar senhas, senha
+//     mestra) são exclusivas do dono (OWNER_EMAIL).
+//
+// IMPORTANTE: mantenha as contas da equipe SEMPRE criadas no Firebase Auth.
+// O cadastro de contas por e-mail é aberto no plano Spark; se uma conta da
+// lista for excluída, outra pessoa poderia registrar aquele e-mail. Veja
+// docs/SECURITY.md.
 //
 // Observação sobre OR-permissão: regras do Firestore são unidas (qualquer
 // match que concede acesso autoriza). Por isso os caminhos são listados
-// explicitamente em vez de um match recursivo amplo — para que a regra mais
-// restritiva de system_users_v1 não seja anulada por um match genérico.
+// explicitamente em vez de um match recursivo amplo.
 // =============================================================================
 
 rules_version = '2';
@@ -25,59 +29,94 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // -----------------------------------------------------------------------------
+    // Funções auxiliares
+    // -----------------------------------------------------------------------------
+
+    // Conta de e-mail/senha (descarta tokens anônimos e de outros provedores)
+    function isPasswordLogin() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password';
+    }
+
+    // Membro da equipe: conta e-mail/senha cujo e-mail está na lista
+    function isTeamMember() {
+      return isPasswordLogin()
+        && request.auth.token.email in [
+          'miplaceabner@miplace.com',
+          'darkmorelato@miplace.com'
+        ];
+    }
+
+    // Dono do sistema (administra usuários e senha mestra)
+    function isOwner() {
+      return isPasswordLogin()
+        && request.auth.token.email == 'darkmorelato@miplace.com';
+    }
+
+    // -----------------------------------------------------------------------------
     // Documento raiz da empresa + subcoleção de despesas
     // (miplace-despesas/data e miplace-despesas/data/team_expenses_v2)
     // -----------------------------------------------------------------------------
     match /miplace-despesas/data {
-      allow read, write: if request.auth != null;
+      allow read, write: if isTeamMember();
 
       match /team_expenses_v2/{expenseId} {
-        allow read, write: if request.auth != null;
+        allow read, write: if isTeamMember();
       }
     }
 
     // -----------------------------------------------------------------------------
     // Documento de dados da equipe (miplace-despesas/data-team_data) e suas
-    // subcoleções. Qualquer usuário autenticado lê e escreve.
+    // subcoleções.
     // -----------------------------------------------------------------------------
     match /miplace-despesas/data-team_data {
-      allow read, write: if request.auth != null;
+      allow read, write: if isTeamMember();
 
       // Checklist global do calendário (documento único: 'checks')
       match /global_checklist_v1/{checkId} {
-        allow read, write: if request.auth != null;
+        allow read, write: if isTeamMember();
       }
 
       // Pagamentos fixos
       match /fixed_payments_v1/{paymentId} {
-        allow read, write: if request.auth != null;
+        allow read, write: if isTeamMember();
       }
 
       // Tarefas (To-Do)
       match /todo_tasks_v1/{taskId} {
-        allow read, write: if request.auth != null;
+        allow read, write: if isTeamMember();
       }
 
-      // Logs de auditoria
+      // Logs de auditoria: nunca podem ser excluídos (a gravação usa setDoc com
+      // id determinístico, por isso `update` continua permitido).
       match /audit_logs_v1/{logId} {
-        allow read, write: if request.auth != null;
+        allow read, create, update: if isTeamMember();
+        allow delete: if false;
       }
 
-      // Configurações do sistema (reservado — ainda não usado pelo app hoje;
-      // incluído preventivamente para não quebrar em um próximo deploy)
+      // Configurações do sistema (inclui a senha mestra de admin em
+      // admin_master, guardada como hash). Equipe lê (o app valida a senha no
+      // cliente); só o dono escreve.
       match /system_settings_v1/{settingId} {
-        allow read, write: if request.auth != null;
+        allow read: if isTeamMember();
+        allow write: if isOwner();
       }
 
       // -----------------------------------------------------------------------------
-      // Usuários do sistema: leitura e atualização permitidas para autenticados,
-      // mas CRIAÇÃO e EXCLUSÃO são proibidas — o seed é feito apenas pelo script
-      // offline scripts/seed_users.mjs (admin SDK), que ignora estas regras.
+      // Usuários do sistema (perfil: nome, perfil de acesso e hash de senha de
+      // confirmação). O LOGIN é feito pelo Firebase Auth — estes documentos não
+      // autenticam ninguém.
+      //   - Equipe lê (o app consulta o perfil e valida a senha de admin).
+      //   - Equipe só pode atualizar `lastLogin` (registro do último acesso).
+      //   - Dono cria, exclui e altera qualquer campo (trocas de senha etc.,
+      //     feitas por scripts/seed_users.mjs).
       // -----------------------------------------------------------------------------
       match /system_users_v1/{userId} {
-        allow read: if request.auth != null;
-        allow update: if request.auth != null;
-        allow create, delete: if false;
+        allow read: if isTeamMember();
+        allow update: if isOwner()
+          || (isTeamMember()
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastLogin']));
+        allow create, delete: if isOwner();
       }
     }
 

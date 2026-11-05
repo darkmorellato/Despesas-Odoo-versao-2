@@ -6,7 +6,6 @@ vi.mock('@/config/firebase', () => ({
   auth: {
     currentUser: null,
     onAuthStateChanged: vi.fn(() => vi.fn()),
-    signInAnonymously: vi.fn(() => Promise.resolve({ user: { uid: 'test-uid' } })),
   },
   db: {},
   getFirebaseRefs: vi.fn(() => ({
@@ -23,7 +22,8 @@ vi.mock('@/config/firebase', () => ({
     checksRef: {},
   })),
   onAuthStateChanged: vi.fn(() => vi.fn()),
-  signInAnonymously: vi.fn(() => Promise.resolve({ user: { uid: 'test-uid' } })),
+  signInWithEmailAndPassword: vi.fn(() => Promise.resolve({ user: { uid: 'test-uid' } })),
+  signOut: vi.fn(() => Promise.resolve()),
   collection: vi.fn(),
   doc: vi.fn(),
   query: vi.fn(),
@@ -52,6 +52,8 @@ vi.mock('firebase/firestore', () => ({
   updateDoc: vi.fn(() => Promise.resolve()),
   deleteDoc: vi.fn(() => Promise.resolve()),
   where: vi.fn(),
+  limit: vi.fn(),
+  writeBatch: vi.fn(() => ({ set: vi.fn(), update: vi.fn(), commit: vi.fn(() => Promise.resolve()) })),
   getDocs: vi.fn(() => Promise.resolve({
     docs: []
   })),

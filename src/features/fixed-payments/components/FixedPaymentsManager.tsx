@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, memo, useRef, useEffect } from '
 import { useFixedPayments } from '@/features/fixed-payments';
 import { useAuth } from '@/shared/hooks';
 import { validateAnyAdminPassword } from '@/features/auth';
-import { CheckSquare, Edit, Trash2, Plus, ChevronDown, ChevronRight, X, Check, AlertTriangle, Wifi, WifiOff, Cloud, CloudOff, RefreshCw } from '@/shared/components/icons';
+import { CheckSquare, Edit, Trash2, Plus, ChevronDown, ChevronRight, X, AlertTriangle, Cloud, CloudOff, RefreshCw } from '@/shared/components/icons';
 import type { FixedNotification } from '@/shared/types';
 
 interface FixedPaymentsManagerProps {

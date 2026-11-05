@@ -24,7 +24,8 @@
  */
 
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
+import { signInForScript } from './_script_auth.mjs';
 import {
   getFirestore, doc, getDoc, setDoc, deleteField, collection, getDocs
 } from 'firebase/firestore';
@@ -72,10 +73,9 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 
-// As firestore.rules exigem request.auth != null para ler system_users_v1 —
-// o script entra com login anônimo (mesmo mecanismo do app).
-await signInAnonymously(getAuth(app));
-console.log('Autenticado (anônimo) para acessar o Firestore.');
+// As firestore.rules exigem uma conta de e-mail/senha da equipe (escrever em
+// system_users_v1 / system_settings_v1 exige a conta do DONO, darkmorelato).
+await signInForScript(getAuth(app));
 
 // Mesmo formato usado pelo cliente (src/features/auth/services/authService.ts):
 // passwordHash = hex(sha256(`${salt}:${password}`))

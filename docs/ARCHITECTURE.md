@@ -306,7 +306,7 @@ type StoreName = "Piracicaba" | "Amparo" | "Todas";
 
 - **Piracicaba (DP - Realme - XV):** Divide em 3
 - **Amparo (Premium - Kassouf):** Divide em 2
-- **Todas:** Divide em 5
+- **Todas:** Divide em 4 (Dom Pedro II, Realme, XV, Premium — sem Kassouf)
 
 ### 2. Exclusão de Despesas
 

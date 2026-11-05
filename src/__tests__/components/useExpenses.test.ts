@@ -285,9 +285,11 @@ describe('splitExpense', () => {
     expect(result[1]).toEqual({ s: 'Kassouf', v: 100 });
   });
 
-  it('should split Todas into 5 stores', () => {
-    const result = splitExpense('Todas', 500);
-    expect(result).toHaveLength(5);
+  it('should split Todas into 4 stores (sem Kassouf)', () => {
+    const result = splitExpense('Todas', 400);
+    expect(result).toHaveLength(4);
+    expect(result.map(r => r.s)).toEqual(['Dom Pedro II', 'Realme', 'Xv de Novembro', 'Premium']);
+    expect(result.map(r => r.s)).not.toContain('Kassouf');
     result.forEach(entry => {
       expect(entry.v).toBe(100);
     });

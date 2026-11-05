@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { 
   initializeFirestore, 
   getFirestore, 
@@ -58,7 +58,8 @@ export const db = firestoreDb;
 
 // Re-export Firebase functions
 export { 
-  signInAnonymously, 
+  signInWithEmailAndPassword, 
+  signOut, 
   onAuthStateChanged, 
   collection, 
   doc, 

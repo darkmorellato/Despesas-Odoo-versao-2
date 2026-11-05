@@ -14,10 +14,7 @@ import {
   ListTodo,
   ExternalLink,
   Mail,
-  Star,
-  CheckCircle,
-  Circle,
-  Clock
+  Star
 } from '@/shared/components/icons';
 import type { FixedNotification } from '@/shared/types';
 import type { TodoItem } from '@/features/todo/types';

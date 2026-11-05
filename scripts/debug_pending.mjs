@@ -2,7 +2,8 @@
 // Mostra: pagamentos do mês, contagem por dia, e se existe check (raw/norm)
 // correspondente para cada pendente. Apenas metadados — sem senhas/valores.
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously } from 'firebase/auth';
+import { getAuth } from 'firebase/auth';
+import { signInForScript } from './_script_auth.mjs';
 import { getFirestore, doc, collection, getDocs, getDoc } from 'firebase/firestore';
 import { readFileSync, existsSync } from 'node:fs';
 
@@ -29,7 +30,7 @@ const app = initializeApp({
   appId: env.VITE_FIREBASE_APP_ID || '1:770624075590:web:297b8650a919818041d747',
 });
 const db = getFirestore(app);
-await signInAnonymously(getAuth(app));
+await signInForScript(getAuth(app));
 
 const dataDoc = doc(db, 'miplace-despesas', 'data-team_data');
 

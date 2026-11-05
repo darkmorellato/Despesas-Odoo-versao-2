@@ -1,3 +1,17 @@
+import { STORE_CONFIGS, STORE_GROUP_CONFIGS, STORE_DISPLAY_ORDER } from '@/config/stores';
+
+// Cores derivadas de src/config/stores.ts (fonte única). "Amparo" é um apelido
+// antigo mantido para compatibilidade com dados já gravados.
+const STORE_BADGE_CLASSES: Record<string, string> = {
+  ...Object.fromEntries(STORE_CONFIGS.map(s => [s.name, s.badgeClass])),
+  ...Object.fromEntries(STORE_GROUP_CONFIGS.map(g => [g.name, g.badgeClass])),
+  "Amparo": "bg-purple-50/50 text-purple-600 border-purple-200 shadow-sm",
+};
+const STORE_BAR_GRADIENTS: Record<string, string> = {
+  ...Object.fromEntries(STORE_CONFIGS.map(s => [s.name, s.barGradient])),
+  "Amparo": "from-pink-500 to-pink-300",
+};
+
 /**
  * Obtém classes Tailwind CSS para cores específicas de cada loja (estilo badge)
  * 
@@ -15,18 +29,7 @@
  * ```
  */
 export const getStoreColorClass = (storeName: string): string => {
-  const map: Record<string, string> = {
-    "Dom Pedro II": "bg-blue-50/50 text-blue-600 border-blue-200 shadow-sm",
-    "Realme": "bg-yellow-50/50 text-yellow-600 border-yellow-200 shadow-sm",
-    "Xv de Novembro": "bg-slate-50/50 text-slate-600 border-slate-200 shadow-sm",
-    "Premium": "bg-fuchsia-50/50 text-fuchsia-600 border-fuchsia-200 shadow-sm",
-    "Amparo": "bg-purple-50/50 text-purple-600 border-purple-200 shadow-sm",
-    "Kassouf": "bg-orange-50/50 text-orange-600 border-orange-200 shadow-sm",
-    "Piracicaba (DP - Realme - XV)": "bg-red-50/50 text-red-600 border-red-200 shadow-sm",
-    "Amparo (Premium - Kassouf)": "bg-pink-50/50 text-pink-600 border-pink-200 shadow-sm",
-    "Todas": "bg-emerald-50/50 text-emerald-600 border-emerald-200 shadow-sm"
-  };
-  return map[storeName] || "bg-gray-50 text-gray-600 border-gray-200";
+  return STORE_BADGE_CLASSES[storeName] || "bg-gray-50 text-gray-600 border-gray-200";
 };
 
 /**
@@ -43,15 +46,7 @@ export const getStoreColorClass = (storeName: string): string => {
  * ```
  */
 export const getStoreBarColor = (storeName: string): string => {
-  const map: Record<string, string> = {
-    "Dom Pedro II": "from-blue-500 to-blue-300",
-    "Realme": "from-yellow-400 to-yellow-200",
-    "Xv de Novembro": "from-slate-900 to-slate-600",
-    "Premium": "from-purple-500 to-purple-300",
-    "Kassouf": "from-orange-500 to-orange-300",
-    "Amparo": "from-pink-500 to-pink-300"
-  };
-  return map[storeName] || "from-slate-400 to-slate-200";
+  return STORE_BAR_GRADIENTS[storeName] || "from-slate-400 to-slate-200";
 };
 
 /**
@@ -68,12 +63,5 @@ export const getStoreBarColor = (storeName: string): string => {
  * ```
  */
 export const getStoreOrder = (storeName: string): number => {
-  const order: Record<string, number> = {
-    "Dom Pedro II": 1,
-    "Realme": 2,
-    "Kassouf": 3,
-    "Premium": 4,
-    "Xv de Novembro": 5,
-  };
-  return order[storeName] || 99;
+  return STORE_DISPLAY_ORDER[storeName] || 99;
 };
