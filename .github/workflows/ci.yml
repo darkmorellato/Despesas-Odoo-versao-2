@@ -4,11 +4,19 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Botão "Run workflow" na aba Actions: testa e publica (só vale na main)
+  workflow_dispatch:
+    inputs:
+      deploy_rules:
+        description: 'Publicar também as regras do Firestore (pede aprovação)'
+        type: boolean
+        default: false
 
-# Cancela execuções antigas da mesma branch/PR
+# Cancela execuções antigas só em pull requests. Na main NÃO cancela: um deploy
+# em andamento não pode ser interrompido pela metade por um push seguinte.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -40,6 +48,20 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          # Chave de SITE do App Check (pública). Sem a variável, o App Check
+          # fica desligado no build.
+          VITE_APPCHECK_SITE_KEY: ${{ vars.VITE_APPCHECK_SITE_KEY }}
+
+      # O que foi testado é exatamente o que será publicado (sem rebuild)
+      - name: Guardar build para o deploy
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 1
+          if-no-files-found: error
 
   rules:
     name: Regras do Firestore (emulador)
@@ -92,3 +114,102 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts
       - run: npm audit --omit=dev --audit-level=critical
+
+  # ---------------------------------------------------------------------------
+  # DEPLOY — só na main (push ou botão), depois de testes + regras verdes.
+  # Autenticação por OIDC (sem chaves guardadas): o Google só aceita tokens deste
+  # repositório E da branch main. Configuração: docs/DEPLOY.md.
+  # Fica PULADO (não vermelho) enquanto as variáveis GCP_* não existirem.
+  # ---------------------------------------------------------------------------
+  deploy-hosting:
+    name: Publicar o site (Hosting)
+    needs: [verify, rules]
+    if: >-
+      github.ref == 'refs/heads/main' && github.event_name != 'pull_request' &&
+      vars.GCP_WIF_PROVIDER != '' && vars.GCP_SERVICE_ACCOUNT != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write # necessário para o OIDC
+    concurrency:
+      group: deploy-producao
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4 # firebase.json e .firebaserc
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Instalar Firebase CLI
+        run: npm install -g firebase-tools@15.35.0
+
+      - name: Publicar o Hosting
+        run: firebase deploy --only hosting --project miplace-despesas --non-interactive
+
+  rules-changed:
+    name: Regras mudaram?
+    needs: [deploy-hosting]
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Comparar firestore.rules com o push anterior
+        id: diff
+        env:
+          BEFORE: ${{ github.event.before }}
+          EVENT: ${{ github.event_name }}
+          FORCE: ${{ inputs.deploy_rules }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "changed=$FORCE" >> "$GITHUB_OUTPUT"
+          elif [ -z "$BEFORE" ] || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"   # sem base de comparação: por segurança, publica
+          elif git diff --quiet "$BEFORE" "$GITHUB_SHA" -- firestore.rules; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
+  deploy-rules:
+    name: Publicar as regras do Firestore (com aprovação)
+    needs: [rules-changed]
+    if: needs.rules-changed.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # O ambiente exige APROVAÇÃO manual (revisor) antes de rodar: regras erradas
+    # podem travar o app inteiro. Ordem importa: o site já foi publicado.
+    environment: firebase-rules
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: deploy-producao
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+
+      - name: Instalar Firebase CLI
+        run: npm install -g firebase-tools@15.35.0
+
+      - name: Publicar as regras
+        run: firebase deploy --only firestore:rules --project miplace-despesas --non-interactive
